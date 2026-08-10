@@ -29,9 +29,6 @@ jobs:
         with:
           python-version: "3.13"
 
-      - name: Install release dependencies
-        run: python -m pip install --upgrade pip qgis-plugin-ci
-
       - name: Test release packaging rules
         run: python -m unittest tests.test_release_packaging -v
 
@@ -110,25 +107,24 @@ jobs:
           --output release_stage/EVEL_network_tools
           --changelog-file release_notes.md
 
-      - name: Configure qgis-plugin-ci
-        shell: bash
-        run: |
-          cat > .qgis-plugin-ci << 'EOF'
-          plugin_path: release_stage/EVEL_network_tools
-          github_organization_slug: KalverTammik
-          project_slug: Kavitro_MapTools
-          EOF
-          git add -f release_stage/EVEL_network_tools .qgis-plugin-ci
+      - name: Build QGIS repository assets
+        run: >-
+          python tools/build_qgis_repository.py
+          --plugin-dir release_stage/EVEL_network_tools
+          --out release_repo
+          --base-url
+          "https://github.com/${{ github.repository }}/releases/download/${{ steps.release_values.outputs.release_tag }}/"
 
-      - name: Upload plugin and QGIS repository files
+      - name: Upload QGIS repository assets
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          qgis-plugin-ci release "${{ steps.release_values.outputs.release_version }}" \
-            --release-tag "${{ steps.release_values.outputs.release_tag }}" \
-            --github-token "${GITHUB_TOKEN}" \
-            --create-plugin-repo \
-            --allow-uncommitted-changes
+          TAG="${{ steps.release_values.outputs.release_tag }}"
+          gh release upload "${TAG}" \
+            release_repo/plugins.xml \
+            release_repo/*.zip \
+            release_repo/*.svg \
+            --clobber
 
       - name: Verify release assets
         env:
@@ -136,10 +132,37 @@ jobs:
         shell: bash
         run: |
           TAG="${{ steps.release_values.outputs.release_tag }}"
+          VERSION="${{ steps.release_values.outputs.release_version }}"
+          ZIP_NAME="EVEL_network_tools.${VERSION}.zip"
+          BASE_URL="https://github.com/${{ github.repository }}/releases/download/${TAG}/"
           ASSETS="$(gh release view "${TAG}" --json assets --jq '.assets[].name')"
           echo "${ASSETS}"
           grep -Fxq "plugins.xml" <<< "${ASSETS}"
-          grep -Eq '^EVEL_network_tools\..*\.zip$' <<< "${ASSETS}"
+          grep -Fxq "${ZIP_NAME}" <<< "${ASSETS}"
+          grep -Fxq "evel_network_tools.svg" <<< "${ASSETS}"
+
+          mkdir verified_assets
+          gh release download "${TAG}" \
+            --pattern plugins.xml \
+            --pattern "${ZIP_NAME}" \
+            --dir verified_assets \
+            --clobber
+          grep -Fq "<file_name>${ZIP_NAME}</file_name>" verified_assets/plugins.xml
+          grep -Fq "<download_url>${BASE_URL}${ZIP_NAME}</download_url>" verified_assets/plugins.xml
+          grep -q '<changelog>' verified_assets/plugins.xml
+
+          python - <<'PY'
+          from zipfile import ZipFile
+
+          with ZipFile("verified_assets/EVEL_network_tools.${{ steps.release_values.outputs.release_version }}.zip") as archive:
+              roots = {
+                  name.split("/", 1)[0]
+                  for name in archive.namelist()
+                  if name and not name.endswith("/")
+              }
+          if roots != {"EVEL_network_tools"}:
+              raise SystemExit(f"Unexpected ZIP roots: {sorted(roots)}")
+          PY
 
       - name: Mark release as latest
         env:

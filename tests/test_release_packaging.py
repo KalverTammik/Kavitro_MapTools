@@ -5,9 +5,12 @@ from __future__ import annotations
 import configparser
 import tempfile
 import unittest
+import xml.etree.ElementTree as ET
 from pathlib import Path
+import zipfile
 
 try:
+    from EVEL_network_tools.tools.build_qgis_repository import build_repository
     from EVEL_network_tools.tools.build_release import (
         PLUGIN_FOLDER,
         ROOT_FILES,
@@ -17,6 +20,7 @@ try:
 except ModuleNotFoundError as error:
     if error.name != "EVEL_network_tools":
         raise
+    from tools.build_qgis_repository import build_repository
     from tools.build_release import (
         PLUGIN_FOLDER,
         ROOT_FILES,
@@ -82,6 +86,54 @@ class ReleasePackagingTest(unittest.TestCase):
             output = Path(temp_dir) / PLUGIN_FOLDER
             with self.assertRaisesRegex(ValueError, "expected x.y.z"):
                 build_release(ROOT, output, "v0.12.2")
+
+    def test_repository_assets_use_public_urls_and_exact_plugin_root(self) -> None:
+        base_url = (
+            "https://github.com/KalverTammik/Kavitro_MapTools/"
+            "releases/download/v0.12.2/"
+        )
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            plugin_dir = temp_root / PLUGIN_FOLDER
+            repository_dir = temp_root / "repository"
+            build_release(
+                ROOT,
+                plugin_dir,
+                VERSION,
+                "EVEL Võrgutööriistad 0.12.2\n\nValidated release notes.",
+            )
+
+            xml_path, zip_path, icon_path = build_repository(
+                plugin_dir,
+                repository_dir,
+                base_url,
+            )
+
+            plugin = ET.parse(xml_path).getroot().find("pyqgis_plugin")
+            self.assertIsNotNone(plugin)
+            self.assertEqual(
+                "EVEL_network_tools.0.12.2.zip",
+                plugin.findtext("file_name"),
+            )
+            self.assertEqual(
+                base_url + "EVEL_network_tools.0.12.2.zip",
+                plugin.findtext("download_url"),
+            )
+            self.assertIn("Validated release notes", plugin.findtext("changelog"))
+            self.assertEqual(
+                base_url + "evel_network_tools.svg",
+                plugin.findtext("icon"),
+            )
+            self.assertTrue(icon_path.is_file())
+
+            with zipfile.ZipFile(zip_path) as archive:
+                roots = {
+                    name.split("/", 1)[0]
+                    for name in archive.namelist()
+                    if name and not name.endswith("/")
+                }
+                self.assertEqual({PLUGIN_FOLDER}, roots)
+                self.assertIn(f"{PLUGIN_FOLDER}/metadata.txt", archive.namelist())
 
 
 if __name__ == "__main__":
