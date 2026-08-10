@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="title description">
+  <title id="title">EVEL Network Tools</title>
+  <desc id="description">Blue water network with connected nodes</desc>
+  <defs>
+    <linearGradient id="background" x1="8" y1="6" x2="56" y2="58" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#075985"/>
+      <stop offset="1" stop-color="#0f766e"/>
+    </linearGradient>
+  </defs>
+  <rect x="2" y="2" width="60" height="60" rx="14" fill="url(#background)"/>
+  <path d="M16 45 29 31l10 7 10-19" fill="none" stroke="#dff7ff" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="16" cy="45" r="6" fill="#38bdf8" stroke="#fff" stroke-width="3"/>
+  <circle cx="29" cy="31" r="6" fill="#22d3ee" stroke="#fff" stroke-width="3"/>
+  <circle cx="39" cy="38" r="6" fill="#2dd4bf" stroke="#fff" stroke-width="3"/>
+  <circle cx="49" cy="19" r="6" fill="#5eead4" stroke="#fff" stroke-width="3"/>
+</svg>

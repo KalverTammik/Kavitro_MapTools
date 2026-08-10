@@ -1,0 +1,32 @@
+name: Quality checks
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+
+      - name: Compile Python sources
+        run: >-
+          python -m compileall -q
+          __init__.py plugin.py importer layers map_tools topology ui tools
+
+      - name: Test release packaging
+        run: python -m unittest tests.test_release_packaging -v

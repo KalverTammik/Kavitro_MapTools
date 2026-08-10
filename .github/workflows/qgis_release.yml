@@ -1,0 +1,154 @@
+name: Release QGIS Plugin
+
+on:
+  release:
+    types:
+      - published
+  workflow_dispatch:
+    inputs:
+      release_version:
+        description: Version to package (for example 0.12.2)
+        required: true
+      release_tag:
+        description: Optional tag override (for example v0.12.2)
+        required: false
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+
+      - name: Install release dependencies
+        run: python -m pip install --upgrade pip qgis-plugin-ci
+
+      - name: Test release packaging rules
+        run: python -m unittest tests.test_release_packaging -v
+
+      - name: Resolve release values
+        id: release_values
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "release" ]; then
+            RELEASE_TAG="${{ github.event.release.tag_name }}"
+            RELEASE_VERSION="${RELEASE_TAG#v}"
+            RELEASE_VERSION="${RELEASE_VERSION#V}"
+          else
+            RELEASE_VERSION="${{ inputs.release_version }}"
+            if [ -n "${{ inputs.release_tag }}" ]; then
+              RELEASE_TAG="${{ inputs.release_tag }}"
+            else
+              RELEASE_TAG="v${RELEASE_VERSION}"
+            fi
+          fi
+
+          RELEASE_VERSION="${RELEASE_VERSION#[vV]}"
+          if [[ "${RELEASE_VERSION}" =~ ^[0-9]+\.[0-9]+$ ]]; then
+            RELEASE_VERSION="${RELEASE_VERSION}.0"
+          elif [[ "${RELEASE_VERSION}" =~ ^[0-9]+$ ]]; then
+            RELEASE_VERSION="${RELEASE_VERSION}.0.0"
+          fi
+
+          if ! [[ "${RELEASE_VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-].*)?$ ]]; then
+            echo "Invalid release version '${RELEASE_VERSION}'. Use x.y.z or a vX.Y.Z tag."
+            exit 1
+          fi
+
+          echo "release_tag=${RELEASE_TAG}" >> "$GITHUB_OUTPUT"
+          echo "release_version=${RELEASE_VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Ensure GitHub release exists for manual runs
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          TAG="${{ steps.release_values.outputs.release_tag }}"
+          gh release view "${TAG}" >/dev/null 2>&1 || \
+            gh release create "${TAG}" --target "${GITHUB_SHA}" \
+              --title "${TAG}" --notes "EVEL Võrgutööriistad ${TAG}"
+
+      - name: Prepare release notes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_TITLE: ${{ github.event.release.name }}
+          EVENT_BODY: ${{ github.event.release.body }}
+        shell: bash
+        run: |
+          TAG="${{ steps.release_values.outputs.release_tag }}"
+          TITLE="${EVENT_TITLE}"
+          BODY="${EVENT_BODY}"
+
+          if [ "${EVENT_NAME}" = "workflow_dispatch" ]; then
+            TITLE="$(gh release view "${TAG}" --json name,tagName --jq '.name // .tagName')"
+            BODY="$(gh release view "${TAG}" --json body --jq '.body // ""')"
+          fi
+          if [ -z "${TITLE}" ]; then
+            TITLE="${TAG}"
+          fi
+
+          printf '%s\n' "${TITLE}" > release_notes.md
+          if [ -n "${BODY}" ]; then
+            printf '\n%s\n' "${BODY}" >> release_notes.md
+          fi
+
+      - name: Build minimal plugin directory
+        run: >-
+          python tools/build_release.py
+          --version "${{ steps.release_values.outputs.release_version }}"
+          --output release_stage/EVEL_network_tools
+          --changelog-file release_notes.md
+
+      - name: Configure qgis-plugin-ci
+        shell: bash
+        run: |
+          cat > .qgis-plugin-ci << 'EOF'
+          plugin_path: release_stage/EVEL_network_tools
+          github_organization_slug: KalverTammik
+          project_slug: Kavitro_MapTools
+          EOF
+          git add -f release_stage/EVEL_network_tools .qgis-plugin-ci
+
+      - name: Upload plugin and QGIS repository files
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          qgis-plugin-ci release "${{ steps.release_values.outputs.release_version }}" \
+            --release-tag "${{ steps.release_values.outputs.release_tag }}" \
+            --github-token "${GITHUB_TOKEN}" \
+            --create-plugin-repo \
+            --allow-uncommitted-changes
+
+      - name: Verify release assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          TAG="${{ steps.release_values.outputs.release_tag }}"
+          ASSETS="$(gh release view "${TAG}" --json assets --jq '.assets[].name')"
+          echo "${ASSETS}"
+          grep -Fxq "plugins.xml" <<< "${ASSETS}"
+          grep -Eq '^EVEL_network_tools\..*\.zip$' <<< "${ASSETS}"
+
+      - name: Mark release as latest
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          TAG="${{ steps.release_values.outputs.release_tag }}"
+          RELEASE_ID="$(gh api "repos/${{ github.repository }}/releases/tags/${TAG}" --jq '.id')"
+          gh api --method PATCH \
+            "repos/${{ github.repository }}/releases/${RELEASE_ID}" \
+            -F make_latest=true \
+            -F prerelease=false

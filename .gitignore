@@ -1,0 +1,47 @@
+# Python caches and test output
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+test-results/
+.tox/
+.nox/
+
+# Local QGIS and database data
+*.db
+*.gpkg
+*.sqlite
+*.sqlite3
+*.qgz
+*.qgs
+*.qgs~
+
+# Local configuration and secrets
+.env
+.env.*
+!.env.example
+secrets.md
+
+# Editors and operating systems
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*.tmp
+*.temp
+*.bak
+
+# Release and packaging output
+.qgis-plugin-ci
+build/
+dist/
+release_stage/
+release_repo/
+*.zip

@@ -1,0 +1,18 @@
+[general]
+name=EVEL Võrgutööriistad
+description=EVEL andmemudeli võrkude topoloogiliselt korrektse redigeerimise tööriistad
+about=Eraldiseisev QGIS-i plugin EVEL võrguobjektide joonestamiseks, sõlmeseoste haldamiseks ja topoloogia kontrollimiseks.
+version=0.12.2
+qgisMinimumVersion=3.40
+author=Kalver Tammik / Tuloli OÜ
+email=tulolikt@gmail.com
+homepage=https://github.com/KalverTammik/Kavitro_MapTools
+tracker=https://github.com/KalverTammik/Kavitro_MapTools/issues
+repository=https://github.com/KalverTammik/Kavitro_MapTools
+tags=EVEL,water,sewer,network,topology,editing
+category=Vector
+icon=resources/icons/evel_network_tools.svg
+experimental=True
+deprecated=False
+hasProcessingProvider=no
+server=False
