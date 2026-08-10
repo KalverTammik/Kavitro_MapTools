@@ -32,11 +32,13 @@ Töövoo võib käivitada ka käsitsi. Sellisel juhul tuleb sisestada versioon k
 
 ## Pakendi sisu
 
-`tools/build_release.py` koostab allow-list'i alusel minimaalse pakendi. Sellesse
-kuuluvad plugina käituskood, metaandmed ja ikoon. Testid, arendusdokumendid,
-lokaalsed andmebaasid, QGIS-i projektid, vahemälud ning ehitusväljund jäetakse
-välja. Pakendaja muudab ainult release-kataloogis versiooni, stabiilsuslipu ja
-muudatuste kirjelduse; arenduskataloogi `metadata.txt` jääb puutumata.
+`tools/build_release.py` koostab allow-list'i alusel minimaalse pluginakausta.
+`tools/build_qgis_repository.py` teeb sellest ZIP-i, mille juurkaust on täpselt
+`EVEL_network_tools`, ning loob sama ZIP-i avalikule URL-ile viitava
+`plugins.xml` faili. Testid, arendusdokumendid, lokaalsed andmebaasid, QGIS-i
+projektid, vahemälud ja ehitusväljund jäetakse välja. Pakendaja muudab ainult
+release-kataloogis versiooni, stabiilsuslipu ja muudatuste kirjelduse;
+arenduskataloogi `metadata.txt` jääb puutumata.
 
 GitHubi automaatsed `Source code` arhiivid ei ole QGIS-i paigalduspakendid.
 
