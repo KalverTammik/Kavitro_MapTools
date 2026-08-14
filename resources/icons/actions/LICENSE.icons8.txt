@@ -1,0 +1,14 @@
+Icons8 concept icon usage notice
+================================
+
+The PNG files in this directory are temporary visual-concept assets selected
+from the Icons8 Windows 11 Color and Windows 11 Outline icon families.
+
+Source: https://icons8.com/
+License and usage terms: https://icons8.com/license
+Exact source mapping: SOURCES.icons8.txt
+
+These assets are used only in the private EVEL Network Tools concept build.
+They must be replaced with commissioned original artwork before any public or
+production distribution unless the distributor has separately confirmed and
+complied with the applicable Icons8 terms.

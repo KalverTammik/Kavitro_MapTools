@@ -29,6 +29,9 @@ Praegune arendusversioon sisaldab:
 - **Lisa toru** rippmenüüd, mis kuvab projekti tegelikud vee- ja isevoolsete
   torude tüübid, aktiveerib valitud generaatori kihi ning käivitab vastava
   joonestamistöövoo;
+- sama menüü valikut **Lisa toru koordinaatidega**, mis lubab valida torukihi
+  ja sisendi koordinaatsüsteemi, sisestada algus- ja lõpp-punkti ning vajadusel
+  täiendavad murdepunktid käsitsi või lõikelaualt;
 - isevoolse kanali, sademeveetoru, ühisvoolse kanali ja drenaaži lisamist
   ühise heleda kolme sammuga EVEL-i torudialoogiga ning geomeetriast arvutatud
   `LENGTH_2D` väärtusega;
@@ -327,6 +330,13 @@ baassõlm; võimaliku `sn_water_branch` detailkirje automaatne klassifitseerimin
 ootab sisulist otsust. **Kontrolli** ja **Paranda** on seni teadlikult
 keelatud.
 
+Koordinaadisisestus toetab kihi CRS-i, projekti CRS-i ja WGS84 koordinaate.
+Sisend teisendatakse enne salvestamist valitud torukihi CRS-i. X ja Y võib
+sisestada punkti või komaga kümnendmurruna; lõikelaualt asetamisel sobivad
+tabulaatori, tühiku või semikooloniga eraldatud koordinaadipaarid. Veetoru
+otspunktide topoloogiakontroll kasutab koordinaadisisestusel fikseeritud täpsust
+ega sõltu kaardi hetke suurendusastmest.
+
 Visuaalne konfiguraator käsitleb keskset liitmikku ja iga haru sulgeseadet
 eraldi võrguobjektina. See vastab mudelile, kus ühel baassõlmel saab olla üks
 `sn_water_branch` ja üks `sn_water_valve` detailkirje ning detailtabelites pole
@@ -375,3 +385,23 @@ python tools\build_release.py --version 0.12.2 `
 ```
 
 Väljalaske tegemise täpne protsess on kirjeldatud failis [RELEASE.md](RELEASE.md).
+
+## Kolmandate osapoolte ressursid
+
+Plugina visioonikontseptsiooni üldise kasutajaliidese ikoonid pärinevad
+[Icons8](https://icons8.com/) Windows 11 Color ja Windows 11 Outline seeriatest.
+Allikate loend ja kasutusteave paiknevad failides
+`resources/icons/actions/SOURCES.icons8.txt` ning
+`resources/icons/actions/LICENSE.icons8.txt`. Need kontseptsiooniikoonid tuleb
+enne avalikku tootepaketti asendada tellitud originaalsete ikoonidega. Neid ei
+kasutata kaardikihtide sümboloogias ega kihipõhiste ikoonide asendamiseks.
+
+## Ikoonide haldus
+
+Kasutajaliidese ikoonid asuvad kataloogis `resources/icons/actions`. Keskne
+semantiline mapping ja kõik `ICON_*` konstandid asuvad failis
+`ui/icon_catalog.py`. Näiteks kõigi salvestamisnuppude ikooni vahetamiseks
+piisab faili `save.png` asendamisest. Kui tegevus peab kasutama teist faili,
+muuda `ICON_FILES` mapping'ut. Uue tegevuse lisamisel lisa PNG- või SVG-fail,
+uus `ICON_*` konstant ja selle kirje samasse mapping'usse. Nii saab hiljem
+tellitud ikoonikomplektile üle minna ainult faile ja mapping'ut vahetades.

@@ -24,6 +24,11 @@ from qgis.PyQt.QtWidgets import (
 from ..layers import LookupOption, ManholeConfigurationOptions
 from ..topology import ManholeConfiguration
 from .light_style import apply_evel_light_style
+from .icon_catalog import (
+    ICON_CONFIGURE,
+    apply_standard_button_icons,
+    set_catalog_icon,
+)
 
 
 class ManholeConfiguratorDialog(QDialog):
@@ -167,6 +172,7 @@ class ManholeConfiguratorDialog(QDialog):
         )
         buttons.button(QDialogButtonBox.Save).setText("Salvesta valikud")
         buttons.button(QDialogButtonBox.Cancel).setText("Loobu")
+        apply_standard_button_icons(buttons)
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         root.addWidget(buttons)
@@ -246,6 +252,7 @@ class ManholeSectionWidget(QGroupBox):
         controls.addWidget(self.enabled_checkbox)
         controls.addStretch(1)
         self.edit_button = QPushButton("Parameetrid…", self)
+        set_catalog_icon(self.edit_button, ICON_CONFIGURE)
         controls.addWidget(self.edit_button)
         layout.addLayout(controls)
         self.summary_label = QLabel(self)

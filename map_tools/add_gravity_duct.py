@@ -5,7 +5,13 @@ from __future__ import annotations
 from collections.abc import Callable
 
 from qgis.PyQt.QtWidgets import QDialog
-from qgis.core import Qgis, QgsFeature, QgsMessageLog, QgsVectorLayer
+from qgis.core import (
+    Qgis,
+    QgsFeature,
+    QgsGeometry,
+    QgsMessageLog,
+    QgsVectorLayer,
+)
 from qgis.gui import QgsMapTool, QgsMapToolCapture, QgsMapToolDigitizeFeature
 
 from ..topology import (
@@ -63,20 +69,7 @@ class AddGravityDuctController:
         if self.is_active:
             self.cancel()
 
-        self._edit_session = PluginEditingSession((layer,))
-        layer_tools = self.iface.vectorLayerTools()
-        if layer_tools is None:
-            self._rollback_owned_session()
-            self._show_error(
-                "QGIS-i redigeerimistööriistu ei õnnestunud avada."
-            )
-            return False
-        if not layer.isEditable() and not layer_tools.startEditing(layer):
-            self._rollback_owned_session()
-            self._show_error(
-                f"Torukihi „{layer.name()}“ redigeerimisrežiimi "
-                "käivitamine ebaõnnestus."
-            )
+        if not self._start_editing(layer):
             return False
 
         canvas = self.iface.mapCanvas()
@@ -105,6 +98,28 @@ class AddGravityDuctController:
         )
         return True
 
+    def add_geometry(
+        self,
+        layer: QgsVectorLayer,
+        geometry: QgsGeometry,
+    ) -> bool:
+        """Create one gravity duct from an already constructed geometry."""
+
+        if self.is_active:
+            self.cancel()
+        if not self._start_editing(layer):
+            return False
+
+        self._layer = layer
+        try:
+            outcome = self._write_geometry(geometry)
+            return outcome == "success"
+        finally:
+            self._rollback_owned_session()
+            self._layer = None
+            self.action.setChecked(False)
+            self.finished()
+
     def cancel(self, *_args) -> None:
         """Stop the one-shot workflow and restore the preceding map tool."""
 
@@ -117,9 +132,19 @@ class AddGravityDuctController:
             self.cancel()
             return
 
+        outcome = self._write_geometry(captured.geometry())
+        if outcome in {"success", "canceled"}:
+            self.cancel()
+
+    def _write_geometry(self, geometry: QgsGeometry) -> str:
+        layer = self._layer
+        if layer is None:
+            self._show_error("Isevoolse toru kiht ei ole enam saadaval.")
+            return "error"
+
         try:
             result = GravityDuctWriter(layer).write(
-                captured.geometry(),
+                geometry,
                 open_form=self._open_feature_form,
             )
         except GravityDuctWriteCanceled as error:
@@ -129,11 +154,10 @@ class AddGravityDuctController:
                 level=Qgis.MessageLevel.Info,
                 duration=5,
             )
-            self.cancel()
-            return
+            return "canceled"
         except (GravityDuctWriteError, GuidedFeatureEditorError) as error:
             self._show_error(str(error))
-            return
+            return "error"
         except Exception as error:  # pragma: no cover - QGIS runtime guard
             QgsMessageLog.logMessage(
                 f"Isevoolse toru lisamine ebaõnnestus: {error!r}",
@@ -144,7 +168,7 @@ class AddGravityDuctController:
                 "Isevoolse toru lisamine ebaõnnestus ootamatu vea tõttu. "
                 "Üksikasjad on QGIS-i logis."
             )
-            return
+            return "error"
 
         commit_result = self._commit_owned_session()
         if commit_result.errors:
@@ -169,7 +193,25 @@ class AddGravityDuctController:
                 level=Qgis.MessageLevel.Success,
                 duration=7,
             )
-        self.cancel()
+        return "success"
+
+    def _start_editing(self, layer: QgsVectorLayer) -> bool:
+        self._edit_session = PluginEditingSession((layer,))
+        layer_tools = self.iface.vectorLayerTools()
+        if layer_tools is None:
+            self._rollback_owned_session()
+            self._show_error(
+                "QGIS-i redigeerimistööriistu ei õnnestunud avada."
+            )
+            return False
+        if not layer.isEditable() and not layer_tools.startEditing(layer):
+            self._rollback_owned_session()
+            self._show_error(
+                f"Torukihi „{layer.name()}“ redigeerimisrežiimi "
+                "käivitamine ebaõnnestus."
+            )
+            return False
+        return True
 
     def _open_feature_form(
         self,

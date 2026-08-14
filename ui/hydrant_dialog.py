@@ -23,6 +23,7 @@ from ..layers import HydrantContext
 from ..topology import HydrantPlan, HydrantState
 from .guided_feature_editor import GuidedFeatureEditor
 from .light_style import apply_evel_light_style
+from .icon_catalog import apply_standard_button_icons
 
 
 TEXT_SETUP = QgsEditorWidgetSetup(
@@ -293,6 +294,7 @@ class HydrantDialog(QDialog):
         self.buttons.button(QDialogButtonBox.Cancel).setObjectName(
             "hydrantCancelButton"
         )
+        apply_standard_button_icons(self.buttons)
         self.buttons.accepted.connect(self._validate_and_accept)
         self.buttons.rejected.connect(self.reject)
         root.addWidget(self.buttons)

@@ -65,6 +65,25 @@ class ReleasePackagingTest(unittest.TestCase):
             self.assertTrue(
                 (output / "resources/icons/evel_network_tools.svg").is_file()
             )
+            self.assertTrue(
+                (
+                    output
+                    / "resources/icons/actions/save.png"
+                ).is_file()
+            )
+            self.assertTrue(
+                (
+                    output
+                    / "resources/icons/actions/LICENSE.icons8.txt"
+                ).is_file()
+            )
+            self.assertTrue(
+                (
+                    output
+                    / "resources/icons/actions/SOURCES.icons8.txt"
+                ).is_file()
+            )
+            self.assertFalse((output / "resources/line_awesome").exists())
             self.assertFalse((output / "tests").exists())
             self.assertFalse((output / "docs").exists())
             self.assertFalse((output / "tools").exists())

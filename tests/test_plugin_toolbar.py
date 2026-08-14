@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import unittest
+from unittest.mock import Mock, patch
 
-from qgis.PyQt.QtCore import QObject, pyqtSignal
-from qgis.PyQt.QtWidgets import QMainWindow, QToolBar, QToolButton
-from qgis.core import QgsProject, QgsVectorLayer
+from qgis.PyQt.QtCore import QObject, QSize, pyqtSignal
+from qgis.PyQt.QtWidgets import QDialog, QMainWindow, QToolBar, QToolButton
+from qgis.core import QgsGeometry, QgsPointXY, QgsProject, QgsVectorLayer
 
 from EVEL_network_tools.plugin import EVELNetworkToolsPlugin
 from EVEL_network_tools.layers import (
@@ -73,7 +74,9 @@ class PluginToolbarTest(unittest.TestCase):
         self.assertIsNotNone(plugin.toolbar)
         self.assertEqual("EVELNetworkToolsToolbar", plugin.toolbar.objectName())
         self.assertTrue(plugin.toolbar.property("evelLightTheme"))
+        self.assertEqual(QSize(20, 20), plugin.toolbar.iconSize())
         self.assertIn("#f6f7f8", plugin.toolbar.styleSheet())
+        self.assertIn("padding: 2px 4px", plugin.toolbar.styleSheet())
         self.assertIs(plugin.add_duct_menu, plugin.add_duct_action.menu())
         self.assertTrue(plugin.add_duct_menu.property("evelLightTheme"))
         self.assertIn("#ffffff", plugin.add_duct_menu.styleSheet())
@@ -94,6 +97,22 @@ class PluginToolbarTest(unittest.TestCase):
         self.assertFalse(plugin.reverse_action.isEnabled())
         self.assertFalse(plugin.check_action.isEnabled())
         self.assertFalse(plugin.repair_action.isEnabled())
+        actions = (
+            plugin.status_action,
+            plugin.add_duct_action,
+            plugin.edit_duct_action,
+            plugin.configure_node_action,
+            plugin.hydrant_action,
+            plugin.connection_point_action,
+            plugin.sewer_manhole_action,
+            plugin.sewer_pumping_station_action,
+            plugin.import_action,
+            plugin.clear_data_action,
+            plugin.reverse_action,
+            plugin.check_action,
+            plugin.repair_action,
+        )
+        self.assertTrue(all(not action.icon().isNull() for action in actions))
 
         plugin.show_diagnostics()
         self.assertEqual(1, len(iface.messageBar().messages))
@@ -208,6 +227,13 @@ class PluginToolbarTest(unittest.TestCase):
             for action in plugin.add_duct_menu.actions()
             if action.text() == "Isevoolne kanal"
         )
+        coordinate_action = next(
+            action
+            for action in plugin.add_duct_menu.actions()
+            if action.objectName() == "EVELAddDuctCoordinatesAction"
+        )
+        self.assertTrue(coordinate_action.isEnabled())
+        self.assertFalse(coordinate_action.icon().isNull())
 
         menu_action.trigger()
 
@@ -245,6 +271,59 @@ class PluginToolbarTest(unittest.TestCase):
             "Määramata suunaks",
             plugin.reverse_action.toolTip(),
         )
+        plugin.unload()
+
+    def test_coordinate_dialog_routes_geometry_to_selected_layer(self) -> None:
+        iface = _FakeIface()
+        plugin = EVELNetworkToolsPlugin(iface)
+        plugin.initGui()
+        layer = QgsVectorLayer(
+            "LineString?crs=EPSG:3301",
+            "Isevoolne kanal",
+            "memory",
+        )
+        QgsProject.instance().addMapLayer(layer)
+        option = DuctLayerOption(
+            layer=layer,
+            label="Isevoolne kanal",
+            workflow=DuctWorkflow.GRAVITY_GEOMETRY,
+            network_id=315,
+            nettype_id=309,
+            enabled=True,
+            reason="Kasutatav.",
+        )
+        geometry = QgsGeometry.fromPolylineXY(
+            [QgsPointXY(500000, 6580000), QgsPointXY(500010, 6580010)]
+        )
+        calls = []
+
+        class _Controller:
+            @staticmethod
+            def cancel() -> None:
+                pass
+
+            @staticmethod
+            def add_geometry(selected_layer, selected_geometry) -> bool:
+                calls.append((selected_layer, selected_geometry))
+                return True
+
+        dialog = Mock()
+        dialog.exec_.return_value = QDialog.Accepted
+        dialog.selected_option = option
+        dialog.duct_geometry.return_value = geometry
+        plugin._duct_options = (option,)
+        plugin._gravity_controller = _Controller()
+
+        with patch(
+            "EVEL_network_tools.plugin.CoordinateDuctDialog",
+            return_value=dialog,
+        ):
+            plugin._open_coordinate_duct_dialog()
+
+        self.assertEqual(1, len(calls))
+        self.assertIs(layer, calls[0][0])
+        self.assertEqual(geometry.asWkt(), calls[0][1].asWkt())
+        self.assertIs(layer, iface.activeLayer())
         plugin.unload()
 
 

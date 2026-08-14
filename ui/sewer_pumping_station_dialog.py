@@ -65,6 +65,18 @@ from ..topology import (
     SewerPumpingStationState,
 )
 from .light_style import apply_evel_light_style
+from .icon_catalog import (
+    ICON_ADD,
+    ICON_BACK,
+    ICON_CANCEL,
+    ICON_COPY,
+    ICON_NEXT,
+    ICON_PREVIEW_HIDE,
+    ICON_PREVIEW_SHOW,
+    ICON_REMOVE,
+    ICON_SAVE,
+    set_catalog_icon,
+)
 
 
 class PumpStationStepTabBar(QTabBar):
@@ -929,6 +941,7 @@ class SewerPumpingStationDialog(QDialog):
             self.preview,
         )
         self.preview_toggle_button.setObjectName("previewToggleButton")
+        set_catalog_icon(self.preview_toggle_button, ICON_PREVIEW_HIDE)
         self.preview_toggle_button.setToolTip(
             "Peida pumpla illustratiivne skeem."
         )
@@ -950,6 +963,7 @@ class SewerPumpingStationDialog(QDialog):
             editor_frame,
         )
         self.preview_show_button.setObjectName("previewToggleButton")
+        set_catalog_icon(self.preview_show_button, ICON_PREVIEW_SHOW)
         self.preview_show_button.setToolTip(
             "Taasta pumpla illustratiivne skeem."
         )
@@ -996,10 +1010,13 @@ class SewerPumpingStationDialog(QDialog):
         footer = QHBoxLayout()
         self.cancel_button = QPushButton("Tühista", self)
         self.cancel_button.setObjectName("cancelButton")
+        set_catalog_icon(self.cancel_button, ICON_CANCEL)
         footer.addWidget(self.cancel_button)
         footer.addStretch(1)
         self.back_button = QPushButton("Tagasi", self)
+        set_catalog_icon(self.back_button, ICON_BACK)
         self.next_button = QPushButton(self)
+        set_catalog_icon(self.next_button, ICON_NEXT)
         self.next_button.setDefault(True)
         footer.addWidget(self.back_button)
         footer.addWidget(self.next_button)
@@ -1494,6 +1511,10 @@ class SewerPumpingStationDialog(QDialog):
             ),
         )
         self.next_button.setText(labels[index])
+        set_catalog_icon(
+            self.next_button,
+            ICON_SAVE if index == self.tabs.count() - 1 else ICON_NEXT,
+        )
         self.back_button.setEnabled(index > 0)
         if index == 1:
             relevant_keys = ("control",)
@@ -1838,6 +1859,9 @@ class SewerPumpingStationDialog(QDialog):
         self.pump_add_button = QPushButton("+ Lisa pump", tab)
         self.pump_duplicate_button = QPushButton("Kopeeri", tab)
         self.pump_remove_button = QPushButton("Eemalda", tab)
+        set_catalog_icon(self.pump_add_button, ICON_ADD)
+        set_catalog_icon(self.pump_duplicate_button, ICON_COPY)
+        set_catalog_icon(self.pump_remove_button, ICON_REMOVE)
         self.pump_add_button.setToolTip("Lisa pumplale uus pumbakirje.")
         self.pump_duplicate_button.setToolTip(
             "Loo valitud pumba andmetest uus pumbakirje."

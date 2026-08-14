@@ -199,6 +199,26 @@ class AddWaterDuctControllerTest(unittest.TestCase):
         )
         self.assertAlmostEqual(5.0, split_part.geometry().length())
 
+    def test_coordinate_geometry_uses_same_topology_writer(self) -> None:
+        geometry = QgsGeometry.fromPolylineXY(
+            [QgsPointXY(0, 0), QgsPointXY(5, 2), QgsPointXY(10, 0)]
+        )
+
+        self.assertTrue(
+            self.controller.add_geometry(self.inspection, geometry),
+            self.iface.messages.messages,
+        )
+
+        self.assertEqual(1, self.iface.form_calls)
+        self.assertFalse(self.edge_layer.isEditable())
+        self.assertFalse(self.node_layer.isEditable())
+        created = max(
+            self.edge_layer.getFeatures(),
+            key=lambda feature: feature.geometry().length(),
+        )
+        self.assertEqual(3, len(created.geometry().asPolyline()))
+        self.assertEqual("10", str(created["END_NODE_ID"]))
+
     def test_controller_uses_guided_water_dialog(self) -> None:
         calls = []
 

@@ -44,6 +44,7 @@ from ..topology import (
     sewer_clock_angle,
 )
 from .light_style import apply_evel_light_style
+from .icon_catalog import apply_standard_button_icons
 
 
 class SewerManholeClockWidget(QWidget):
@@ -372,6 +373,7 @@ class SewerManholeClockDialog(QDialog):
         )
         buttons.button(QDialogButtonBox.Save).setText("Rakenda sõlm")
         buttons.button(QDialogButtonBox.Cancel).setText("Loobu")
+        apply_standard_button_icons(buttons)
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         root.addWidget(buttons)

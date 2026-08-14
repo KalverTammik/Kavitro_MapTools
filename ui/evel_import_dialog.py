@@ -37,6 +37,13 @@ from ..importer import (
     EvelSqlImporter,
 )
 from .light_style import apply_evel_light_style
+from .icon_catalog import (
+    ICON_CHECK,
+    ICON_CLOSE,
+    ICON_FOLDER_OPEN,
+    ICON_IMPORT,
+    set_catalog_icon,
+)
 
 
 class _ImportWorker(QObject):
@@ -141,6 +148,7 @@ class EvelImportDialog(QDialog):
         self.path_edit.setReadOnly(True)
         self.path_edit.setPlaceholderText("Vali EVEL-i kliendi kontrollpakett…")
         self.browse_button = QPushButton("Vali GeoPackage…", file_frame)
+        set_catalog_icon(self.browse_button, ICON_FOLDER_OPEN)
         self.browse_button.clicked.connect(self._browse)
         file_layout.addWidget(self.path_edit, 1)
         file_layout.addWidget(self.browse_button)
@@ -193,12 +201,15 @@ class EvelImportDialog(QDialog):
 
         button_layout = QHBoxLayout()
         self.close_button = QPushButton("Sulge", self)
+        set_catalog_icon(self.close_button, ICON_CLOSE)
         self.close_button.clicked.connect(self._close_or_cancel)
         self.dry_run_button = QPushButton("Kontrolli SQL-importi", self)
+        set_catalog_icon(self.dry_run_button, ICON_CHECK)
         self.dry_run_button.clicked.connect(
             lambda: self._start_import(dry_run=True)
         )
         self.import_button = QPushButton("Impordi andmed", self)
+        set_catalog_icon(self.import_button, ICON_IMPORT)
         self.import_button.setDefault(True)
         self.import_button.clicked.connect(
             lambda: self._start_import(dry_run=False)

@@ -1,0 +1,41 @@
+Icons8 concept icon source mapping
+==================================
+
+Downloaded as transparent 96 x 96 PNG files on 2026-08-13.
+
+Windows 11 Color (Icons8 style slug: fluency)
+------------------------------------------------
+add_duct.png = https://img.icons8.com/fluency/96/water-pipe.png
+check_network.png = https://img.icons8.com/fluency/96/inspection.png
+clear_data.png = https://img.icons8.com/fluency/96/delete-trash.png
+configure_node.png = https://img.icons8.com/fluency/96/workflow.png
+connection_point.png = https://img.icons8.com/fluency/96/share.png
+coordinate_duct.png = https://img.icons8.com/fluency/96/abscissa.png
+edit_duct.png = https://img.icons8.com/fluency/96/edit.png
+error.png = https://img.icons8.com/fluency/96/error.png
+import.png = https://img.icons8.com/fluency/96/import.png
+pumping_station.png = https://img.icons8.com/fluency/96/pumphouse.png
+repair_network.png = https://img.icons8.com/fluency/96/maintenance.png
+reverse_flow.png = https://img.icons8.com/fluency/96/sorting-arrows.png
+sewer_manhole.png = https://img.icons8.com/fluency/96/manhole-cover.png
+status_ok.png = https://img.icons8.com/fluency/96/ok.png
+status_warning.png = https://img.icons8.com/fluency/96/high-risk.png
+
+Windows 11 Outline (Icons8 style slug: fluency-systems-regular)
+----------------------------------------------------------------
+add.png = https://img.icons8.com/fluency-systems-regular/96/add.png
+back.png = https://img.icons8.com/fluency-systems-regular/96/back.png
+cancel.png = https://img.icons8.com/fluency-systems-regular/96/cancel.png
+check.png = https://img.icons8.com/fluency-systems-regular/96/checked.png
+close.png = https://img.icons8.com/fluency-systems-regular/96/multiply.png
+configure.png = https://img.icons8.com/fluency-systems-regular/96/settings.png
+copy.png = https://img.icons8.com/fluency-systems-regular/96/copy.png
+folder_open.png = https://img.icons8.com/fluency-systems-regular/96/opened-folder.png
+hydrant.png = https://img.icons8.com/fluency-systems-regular/96/fire-hydrant.png
+next.png = https://img.icons8.com/fluency-systems-regular/96/forward.png
+paste.png = https://img.icons8.com/fluency-systems-regular/96/paste.png
+preview_hide.png = https://img.icons8.com/fluency-systems-regular/96/hide.png
+preview_show.png = https://img.icons8.com/fluency-systems-regular/96/visible.png
+refresh.png = https://img.icons8.com/fluency-systems-regular/96/refresh.png
+remove.png = https://img.icons8.com/fluency-systems-regular/96/trash.png
+save.png = https://img.icons8.com/fluency-systems-regular/96/save.png

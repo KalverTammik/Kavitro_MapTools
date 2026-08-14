@@ -154,6 +154,22 @@ class AddGravityDuctControllerTest(unittest.TestCase):
         self.assertIsNone(calls[0][3])
         self.assertEqual(0, self.iface.form_calls)
 
+    def test_coordinate_geometry_uses_same_gravity_writer(self) -> None:
+        geometry = QgsGeometry.fromPolylineXY(
+            [QgsPointXY(0, 0), QgsPointXY(5, 2), QgsPointXY(10, 0)]
+        )
+
+        self.assertTrue(
+            self.controller.add_geometry(self.layer, geometry),
+            self.iface.messages.messages,
+        )
+
+        self.assertEqual(1, self.iface.form_calls)
+        self.assertFalse(self.layer.isEditable())
+        feature = next(self.layer.getFeatures())
+        self.assertEqual(3, len(feature.geometry().asPolyline()))
+        self.assertAlmostEqual(geometry.length(), feature["LENGTH_2D"])
+
     def test_canceling_form_ends_plugin_owned_edit_session(self) -> None:
         controller = AddGravityDuctController(
             self.iface,

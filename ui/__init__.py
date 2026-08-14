@@ -33,6 +33,10 @@ from .evel_import_dialog import EvelImportDialog
 from .evel_clear_dialog import EvelClearDataDialog
 from .hydrant_dialog import HydrantDialog, HydrantSchematicWidget
 from .connection_point_dialog import ConnectionPointDialog
+from .coordinate_duct_dialog import (
+    CoordinateDuctDialog,
+    CoordinateDuctInputError,
+)
 
 __all__ = [
     "ManholeConfiguratorDialog",
@@ -56,4 +60,6 @@ __all__ = [
     "HydrantDialog",
     "HydrantSchematicWidget",
     "ConnectionPointDialog",
+    "CoordinateDuctDialog",
+    "CoordinateDuctInputError",
 ]

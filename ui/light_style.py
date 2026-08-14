@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from qgis.PyQt.QtCore import QTimer
+from qgis.PyQt.QtCore import QSize, QTimer
 from qgis.PyQt.QtGui import QColor, QPalette
 from qgis.PyQt.QtWidgets import QComboBox, QWidget
 
@@ -517,16 +517,16 @@ QToolBar#EVELNetworkToolsToolbar {
     background: #f6f7f8;
     color: #24292e;
     border: 1px solid #e1e4e8;
-    spacing: 3px;
-    padding: 3px;
+    spacing: 2px;
+    padding: 2px;
 }
 QToolBar#EVELNetworkToolsToolbar QToolButton {
     background: transparent;
     color: #24292e;
     border: 1px solid transparent;
-    border-radius: 6px;
-    padding: 4px 8px;
-    min-height: 22px;
+    border-radius: 5px;
+    padding: 2px 4px;
+    min-height: 20px;
 }
 QToolBar#EVELNetworkToolsToolbar QToolButton:hover {
     background: #edf4fb;
@@ -548,7 +548,7 @@ QToolBar#EVELNetworkToolsToolbar QToolButton:disabled {
 QToolBar#EVELNetworkToolsToolbar::separator {
     background: #d0d7de;
     width: 1px;
-    margin: 4px 3px;
+    margin: 3px 2px;
 }
 """
 
@@ -678,6 +678,7 @@ def apply_evel_toolbar_light_style(toolbar, menu=None) -> None:
     if toolbar is not None:
         toolbar.setProperty("evelLightTheme", True)
         toolbar.setPalette(_light_palette(toolbar))
+        toolbar.setIconSize(QSize(20, 20))
         toolbar.setStyleSheet(EVEL_TOOLBAR_LIGHT_STYLE)
     if menu is not None:
         menu.setProperty("evelLightTheme", True)

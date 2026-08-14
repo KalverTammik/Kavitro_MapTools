@@ -47,6 +47,7 @@ from ..topology import (
     branch_type_is_compatible,
 )
 from .light_style import apply_evel_light_style
+from .icon_catalog import apply_standard_button_icons
 from .manhole_configurator_dialog import ManholeSectionWidget
 from .facility_configurator_dialog import FacilitySectionWidget
 
@@ -1256,6 +1257,7 @@ class VisualNodeConfiguratorDialog(QDialog):
         )
         buttons.button(QDialogButtonBox.Save).setText("Rakenda")
         buttons.button(QDialogButtonBox.Cancel).setText("Loobu")
+        apply_standard_button_icons(buttons)
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         root.addWidget(buttons)

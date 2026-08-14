@@ -42,6 +42,14 @@ from .guided_feature_editor import (
     GuidedFieldBinding,
 )
 from .light_style import apply_evel_light_style
+from .icon_catalog import (
+    ICON_BACK,
+    ICON_CANCEL,
+    ICON_CLOSE,
+    ICON_NEXT,
+    ICON_SAVE,
+    set_catalog_icon,
+)
 
 
 class DuctEditorProfile(str, Enum):
@@ -618,13 +626,16 @@ class DuctEditorDialog(QDialog):
             self,
         )
         self.cancel_button.setObjectName("cancelButton")
+        set_catalog_icon(self.cancel_button, ICON_CANCEL)
         self.cancel_button.clicked.connect(self.reject)
         footer.addWidget(self.cancel_button)
         footer.addStretch(1)
         self.back_button = QPushButton("Tagasi", self)
+        set_catalog_icon(self.back_button, ICON_BACK)
         self.back_button.clicked.connect(self._previous_step)
         footer.addWidget(self.back_button)
         self.next_button = QPushButton("Edasi", self)
+        set_catalog_icon(self.next_button, ICON_NEXT)
         self.next_button.setDefault(True)
         self.next_button.clicked.connect(self._next_step)
         footer.addWidget(self.next_button)
@@ -935,8 +946,13 @@ class DuctEditorDialog(QDialog):
                     else "Salvesta muudatused"
                 )
             )
+            set_catalog_icon(
+                self.next_button,
+                ICON_CLOSE if self.read_only else ICON_SAVE,
+            )
         else:
             self.next_button.setText("Edasi")
+            set_catalog_icon(self.next_button, ICON_NEXT)
 
     def accept(self) -> None:
         if self.read_only:

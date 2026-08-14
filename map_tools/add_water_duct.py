@@ -10,6 +10,7 @@ from qgis.core import (
     QgsCoordinateTransform,
     QgsCsException,
     QgsFeature,
+    QgsGeometry,
     QgsMessageLog,
     QgsPointXY,
     QgsProject,
@@ -74,29 +75,7 @@ class AddWaterDuctController:
         node_layer = inspection.node_layer
         if edge_layer is None or node_layer is None:
             return False
-        self._edit_session = PluginEditingSession(
-            (node_layer, edge_layer)
-        )
-
-        layer_tools = self.iface.vectorLayerTools()
-        if layer_tools is None:
-            self._rollback_owned_session()
-            self._show_error("QGIS-i redigeerimistööriistu ei õnnestunud avada.")
-            return False
-
-        if not edge_layer.isEditable() and not layer_tools.startEditing(edge_layer):
-            self._rollback_owned_session()
-            self._show_error(
-                f"Torukihi „{edge_layer.name()}“ redigeerimisrežiimi "
-                "käivitamine ebaõnnestus."
-            )
-            return False
-        if not node_layer.isEditable() and not layer_tools.startEditing(node_layer):
-            self._rollback_owned_session()
-            self._show_error(
-                f"Sõlmekihi „{node_layer.name()}“ redigeerimisrežiimi "
-                "käivitamine ebaõnnestus."
-            )
+        if not self._start_editing(inspection):
             return False
 
         canvas = self.iface.mapCanvas()
@@ -124,6 +103,33 @@ class AddWaterDuctController:
         )
         return True
 
+    def add_geometry(
+        self,
+        inspection: ProjectInspection,
+        geometry: QgsGeometry,
+    ) -> bool:
+        """Create one water duct from an already constructed line geometry."""
+
+        if self.is_active:
+            self.cancel()
+        if not inspection.can_add_water_duct:
+            return False
+        if not self._start_editing(inspection):
+            return False
+
+        self._inspection = inspection
+        try:
+            outcome = self._write_geometry(
+                geometry,
+                tolerance=self._coordinate_tolerance(inspection.edge_layer),
+            )
+            return outcome == "success"
+        finally:
+            self._rollback_owned_session()
+            self._inspection = None
+            self.action.setChecked(False)
+            self.finished()
+
     def cancel(self, *_args) -> None:
         """Stop the one-shot workflow and restore the preceding map tool."""
 
@@ -143,12 +149,34 @@ class AddWaterDuctController:
             self.cancel()
             return
 
+        outcome = self._write_geometry(captured.geometry())
+        if outcome in {"success", "canceled"}:
+            self.cancel()
+
+    def _write_geometry(
+        self,
+        geometry: QgsGeometry,
+        *,
+        tolerance: float | None = None,
+    ) -> str:
+        inspection = self._inspection
+        if inspection is None:
+            self._show_error("Toru lisamise töövoo kihid ei ole enam saadaval.")
+            return "error"
+        edge_layer = inspection.edge_layer
+        node_layer = inspection.node_layer
+        if edge_layer is None or node_layer is None:
+            self._show_error("Toru- või sõlmekiht ei ole enam saadaval.")
+            return "error"
+
         try:
             plan = WaterEndpointResolver(
                 edge_layer,
                 node_layer,
-                self._layer_tolerance(edge_layer),
-            ).resolve(captured.geometry())
+                tolerance
+                if tolerance is not None
+                else self._layer_tolerance(edge_layer),
+            ).resolve(geometry)
             result = WaterDuctWriter(edge_layer, node_layer).write(
                 plan,
                 network_id=self._positive_property(
@@ -166,15 +194,14 @@ class AddWaterDuctController:
                 level=Qgis.MessageLevel.Info,
                 duration=5,
             )
-            self.cancel()
-            return
+            return "canceled"
         except (
             EndpointResolutionError,
             GuidedFeatureEditorError,
             WaterDuctWriteError,
         ) as error:
             self._show_error(str(error))
-            return
+            return "error"
         except Exception as error:  # pragma: no cover - QGIS runtime guard
             QgsMessageLog.logMessage(
                 f"Toru lisamine ebaõnnestus: {error!r}",
@@ -185,7 +212,7 @@ class AddWaterDuctController:
                 "Toru lisamine ebaõnnestus ootamatu vea tõttu. "
                 "Üksikasjad on QGIS-i logis."
             )
-            return
+            return "error"
 
         commit_result = self._commit_owned_session()
         if commit_result.errors:
@@ -210,7 +237,35 @@ class AddWaterDuctController:
                 level=Qgis.MessageLevel.Success,
                 duration=7,
             )
-        self.cancel()
+        return "success"
+
+    def _start_editing(self, inspection: ProjectInspection) -> bool:
+        edge_layer = inspection.edge_layer
+        node_layer = inspection.node_layer
+        if edge_layer is None or node_layer is None:
+            return False
+        self._edit_session = PluginEditingSession((node_layer, edge_layer))
+
+        layer_tools = self.iface.vectorLayerTools()
+        if layer_tools is None:
+            self._rollback_owned_session()
+            self._show_error("QGIS-i redigeerimistööriistu ei õnnestunud avada.")
+            return False
+        if not edge_layer.isEditable() and not layer_tools.startEditing(edge_layer):
+            self._rollback_owned_session()
+            self._show_error(
+                f"Torukihi „{edge_layer.name()}“ redigeerimisrežiimi "
+                "käivitamine ebaõnnestus."
+            )
+            return False
+        if not node_layer.isEditable() and not layer_tools.startEditing(node_layer):
+            self._rollback_owned_session()
+            self._show_error(
+                f"Sõlmekihi „{node_layer.name()}“ redigeerimisrežiimi "
+                "käivitamine ebaõnnestus."
+            )
+            return False
+        return True
 
     def _open_feature_form(self, layer, feature: QgsFeature) -> bool:
         if self._form_opener is not None:
@@ -246,6 +301,12 @@ class AddWaterDuctController:
             return max(transformed_center.distance(transformed_offset), 0.001)
         except QgsCsException:
             return 0.001
+
+    @staticmethod
+    def _coordinate_tolerance(edge_layer) -> float:
+        """Use deterministic precision instead of the current canvas zoom."""
+
+        return 0.00000001 if edge_layer.crs().isGeographic() else 0.01
 
     @staticmethod
     def _positive_property(layer, key: str) -> int:

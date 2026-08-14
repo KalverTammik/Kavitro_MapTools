@@ -5,11 +5,12 @@ from __future__ import annotations
 from qgis.PyQt.QtWidgets import (
     QAction,
     QApplication,
+    QDialog,
     QMenu,
     QStyle,
     QToolButton,
 )
-from qgis.core import Qgis, QgsApplication, QgsMessageLog, QgsProject
+from qgis.core import Qgis, QgsMessageLog, QgsProject
 
 from .layers import (
     DuctLayerCatalog,
@@ -37,9 +38,31 @@ from .importer import EvelImportTargetInspector
 from .ui import (
     EvelClearDataDialog,
     EvelImportDialog,
+    CoordinateDuctDialog,
+    CoordinateDuctInputError,
     VisualNodeConfiguratorDialog,
 )
 from .ui.light_style import apply_evel_toolbar_light_style
+from .ui.icon_catalog import (
+    ICON_ADD_DUCT,
+    ICON_CHECK_NETWORK,
+    ICON_CLEAR_DATA,
+    ICON_CONFIGURE_NODE,
+    ICON_CONNECTION_POINT,
+    ICON_COORDINATE_DUCT,
+    ICON_EDIT_DUCT,
+    ICON_ERROR,
+    ICON_HYDRANT,
+    ICON_IMPORT,
+    ICON_PUMPING_STATION,
+    ICON_REPAIR_NETWORK,
+    ICON_REVERSE_FLOW,
+    ICON_SEWER_MANHOLE,
+    ICON_STATUS_OK,
+    ICON_STATUS_WARNING,
+    catalog_icon,
+    set_catalog_icon,
+)
 
 
 MESSAGE_TAG = "EVEL Võrgutööriistad"
@@ -113,8 +136,8 @@ class EVELNetworkToolsPlugin:
 
         self.add_duct_action = self._add_tool_action(
             "Lisa toru",
-            "/mActionAddFeature.svg",
             "EVELAddDuctAction",
+            ICON_ADD_DUCT,
         )
         self.add_duct_action.setCheckable(True)
         self.add_duct_menu = QMenu(self.iface.mainWindow())
@@ -139,8 +162,8 @@ class EVELNetworkToolsPlugin:
         )
         self.edit_duct_action = self._add_tool_action(
             "Vaata/muuda toru",
-            "/mActionIdentify.svg",
             "EVELEditDuctAction",
+            ICON_EDIT_DUCT,
         )
         self.edit_duct_action.setCheckable(True)
         self.edit_duct_action.triggered.connect(self._toggle_edit_duct)
@@ -151,8 +174,8 @@ class EVELNetworkToolsPlugin:
         )
         self.configure_node_action = self._add_tool_action(
             "Konfigureeri sõlm",
-            "/mActionMapTips.svg",
             "EVELConfigureWaterNodeAction",
+            ICON_CONFIGURE_NODE,
         )
         self.configure_node_action.setCheckable(True)
         self.configure_node_action.triggered.connect(
@@ -166,8 +189,8 @@ class EVELNetworkToolsPlugin:
         )
         self.hydrant_action = self._add_tool_action(
             "Hüdrant",
-            "/mActionAddPoint.svg",
             "EVELHydrantAction",
+            ICON_HYDRANT,
         )
         self.hydrant_action.setCheckable(True)
         self.hydrant_action.triggered.connect(self._toggle_hydrant)
@@ -178,8 +201,8 @@ class EVELNetworkToolsPlugin:
         )
         self.connection_point_action = self._add_tool_action(
             "Liitumispunkt",
-            "/mActionAddPoint.svg",
             "EVELConnectionPointAction",
+            ICON_CONNECTION_POINT,
         )
         self.connection_point_action.setCheckable(True)
         self.connection_point_action.triggered.connect(
@@ -194,8 +217,8 @@ class EVELNetworkToolsPlugin:
         )
         self.sewer_manhole_action = self._add_tool_action(
             "Kaev / põlv",
-            "/mActionAddPoint.svg",
             "EVELSewerManholeClockAction",
+            ICON_SEWER_MANHOLE,
         )
         self.sewer_manhole_action.setCheckable(True)
         self.sewer_manhole_action.triggered.connect(
@@ -210,8 +233,8 @@ class EVELNetworkToolsPlugin:
         )
         self.sewer_pumping_station_action = self._add_tool_action(
             "Pumpla",
-            "/mActionAddPoint.svg",
             "EVELSewerPumpingStationAction",
+            ICON_PUMPING_STATION,
         )
         self.sewer_pumping_station_action.setCheckable(True)
         self.sewer_pumping_station_action.triggered.connect(
@@ -227,20 +250,20 @@ class EVELNetworkToolsPlugin:
         self.toolbar.addSeparator()
         self.import_action = self._add_tool_action(
             "Impordi",
-            "/mActionFileOpen.svg",
             "EVELImportAction",
+            ICON_IMPORT,
         )
         self.import_action.triggered.connect(self._open_importer)
         self.clear_data_action = self._add_tool_action(
             "Tühjenda",
-            "/mActionDeleteSelected.svg",
             "EVELClearImportDataAction",
+            ICON_CLEAR_DATA,
         )
         self.clear_data_action.triggered.connect(self._open_data_clearer)
         self.reverse_action = self._add_tool_action(
             "Pööra suund",
-            "/mActionReverseLine.svg",
             "EVELReverseWaterDuctAction",
+            ICON_REVERSE_FLOW,
         )
         self.reverse_action.setCheckable(True)
         self.reverse_action.triggered.connect(
@@ -253,13 +276,13 @@ class EVELNetworkToolsPlugin:
         )
         self.check_action = self._add_tool_action(
             "Kontrolli",
-            "/mActionCheckGeometry.svg",
             "EVELCheckWaterNetworkAction",
+            ICON_CHECK_NETWORK,
         )
         self.repair_action = self._add_tool_action(
             "Paranda",
-            "/mActionRefresh.svg",
             "EVELRepairWaterDuctAction",
+            ICON_REPAIR_NETWORK,
         )
 
         project = QgsProject.instance()
@@ -428,13 +451,13 @@ class EVELNetworkToolsPlugin:
             QgsMessageLog.logMessage(details, MESSAGE_TAG, level)
 
     def _add_tool_action(
-        self, text: str, theme_icon: str, object_name: str
+        self,
+        text: str,
+        object_name: str,
+        icon_name: str,
     ) -> QAction:
-        action = QAction(
-            QgsApplication.getThemeIcon(theme_icon),
-            text,
-            self.iface.mainWindow(),
-        )
+        action = QAction(text, self.iface.mainWindow())
+        set_catalog_icon(action, icon_name)
         action.setObjectName(object_name)
         action.setEnabled(False)
         action.setToolTip(f"{text}: tööriist on arendamisel.")
@@ -445,7 +468,6 @@ class EVELNetworkToolsPlugin:
         if self.status_action is None:
             return
 
-        style = QApplication.style()
         active_option = self._active_duct_option()
         inspection = self._inspection
         if (
@@ -469,11 +491,16 @@ class EVELNetworkToolsPlugin:
             )
 
         if has_error:
-            icon = style.standardIcon(QStyle.SP_MessageBoxCritical)
+            icon = catalog_icon(ICON_ERROR)
+            fallback = QStyle.SP_MessageBoxCritical
         elif has_warning:
-            icon = style.standardIcon(QStyle.SP_MessageBoxWarning)
+            icon = catalog_icon(ICON_STATUS_WARNING)
+            fallback = QStyle.SP_MessageBoxWarning
         else:
-            icon = style.standardIcon(QStyle.SP_DialogApplyButton)
+            icon = catalog_icon(ICON_STATUS_OK)
+            fallback = QStyle.SP_DialogApplyButton
+        if icon.isNull():
+            icon = QApplication.style().standardIcon(fallback)
         self.status_action.setIcon(icon)
 
         self.status_action.setToolTip(
@@ -698,6 +725,23 @@ class EVELNetworkToolsPlugin:
                 "Projektis puuduvad toetatud torukihid"
             )
             empty_action.setEnabled(False)
+        else:
+            menu.addSeparator()
+            coordinate_action = menu.addAction(
+                "Lisa toru koordinaatidega…"
+            )
+            coordinate_action.setObjectName("EVELAddDuctCoordinatesAction")
+            set_catalog_icon(coordinate_action, ICON_COORDINATE_DUCT)
+            coordinate_action.setEnabled(
+                any(option.enabled for option in self._duct_options)
+            )
+            coordinate_action.setToolTip(
+                "Sisesta toru algus-, lõpp- ja võimalikud murdepunktid "
+                "koordinaatidena."
+            )
+            coordinate_action.triggered.connect(
+                self._open_coordinate_duct_dialog
+            )
 
     def _activate_duct_option(self, option: DuctLayerOption) -> None:
         if self.add_duct_action is None or not option.enabled:
@@ -744,6 +788,91 @@ class EVELNetworkToolsPlugin:
         if not activated:
             self.add_duct_action.setChecked(False)
         self._rebuild_add_duct_menu()
+
+    def _open_coordinate_duct_dialog(self) -> None:
+        options = tuple(option for option in self._duct_options if option.enabled)
+        if not options:
+            self.iface.messageBar().pushMessage(
+                MESSAGE_TAG,
+                "Projektis puuduvad koordinaatidega lisatavad torukihid.",
+                level=Qgis.MessageLevel.Warning,
+                duration=6,
+            )
+            return
+
+        self._cancel_add_controllers()
+        if self._flow_direction_controller is not None:
+            self._flow_direction_controller.cancel()
+        if self._edit_duct_controller is not None:
+            self._edit_duct_controller.cancel()
+        if self._node_configurator is not None:
+            self._node_configurator.cancel()
+        if self._hydrant_configurator is not None:
+            self._hydrant_configurator.cancel()
+        if self._connection_point_configurator is not None:
+            self._connection_point_configurator.cancel()
+        if self._sewer_manhole_configurator is not None:
+            self._sewer_manhole_configurator.cancel()
+        if self._sewer_pumping_station_configurator is not None:
+            self._sewer_pumping_station_configurator.cancel()
+
+        selected_id = self._selected_duct_layer_id
+        active = self._active_duct_option()
+        if not selected_id and active is not None:
+            selected_id = active.layer.id()
+        try:
+            dialog = CoordinateDuctDialog(
+                options,
+                selected_layer_id=selected_id,
+                project_crs=QgsProject.instance().crs(),
+                parent=self.iface.mainWindow(),
+            )
+        except CoordinateDuctInputError as error:
+            self.iface.messageBar().pushMessage(
+                MESSAGE_TAG,
+                str(error),
+                level=Qgis.MessageLevel.Critical,
+                duration=8,
+            )
+            return
+        if dialog.exec_() != QDialog.Accepted:
+            return
+
+        option = dialog.selected_option
+        project_layer = QgsProject.instance().mapLayer(option.layer.id())
+        if project_layer is not option.layer:
+            self.refresh_state()
+            self.iface.messageBar().pushMessage(
+                MESSAGE_TAG,
+                "Valitud torukiht ei ole enam projektis saadaval.",
+                level=Qgis.MessageLevel.Critical,
+                duration=8,
+            )
+            return
+        try:
+            geometry = dialog.duct_geometry()
+        except CoordinateDuctInputError as error:
+            self.iface.messageBar().pushMessage(
+                MESSAGE_TAG,
+                str(error),
+                level=Qgis.MessageLevel.Critical,
+                duration=8,
+            )
+            return
+
+        self._selected_duct_layer_id = option.layer.id()
+        self.iface.setActiveLayer(option.layer)
+        if option.workflow is DuctWorkflow.WATER_TOPOLOGY:
+            inspection = self._inspector.inspect(
+                QgsProject.instance(),
+                option.layer,
+            )
+            self._inspection = inspection
+            if self._add_controller is not None:
+                self._add_controller.add_geometry(inspection, geometry)
+        elif self._gravity_controller is not None:
+            self._gravity_controller.add_geometry(option.layer, geometry)
+        self.refresh_state()
 
     def _cancel_add_controllers(self) -> None:
         if self._add_controller is not None:

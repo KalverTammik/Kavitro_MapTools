@@ -32,6 +32,13 @@ from ..importer import (
     EvelSqlClearer,
 )
 from .light_style import apply_evel_light_style
+from .icon_catalog import (
+    ICON_CHECK,
+    ICON_CLEAR_DATA,
+    ICON_CLOSE,
+    ICON_REFRESH,
+    set_catalog_icon,
+)
 
 
 class _ClearWorker(QObject):
@@ -163,14 +170,18 @@ class EvelClearDataDialog(QDialog):
 
         buttons = QHBoxLayout()
         self.close_button = QPushButton("Sulge", self)
+        set_catalog_icon(self.close_button, ICON_CLOSE)
         self.close_button.clicked.connect(self._close_or_cancel)
         self.refresh_button = QPushButton("Värskenda", self)
+        set_catalog_icon(self.refresh_button, ICON_REFRESH)
         self.refresh_button.clicked.connect(self._load_preview)
         self.dry_run_button = QPushButton("Kontrolli tühjendamist", self)
+        set_catalog_icon(self.dry_run_button, ICON_CHECK)
         self.dry_run_button.clicked.connect(
             lambda: self._start_clear(dry_run=True)
         )
         self.clear_button = QPushButton("Tühjenda andmed", self)
+        set_catalog_icon(self.clear_button, ICON_CLEAR_DATA)
         self.clear_button.clicked.connect(
             lambda: self._start_clear(dry_run=False)
         )
