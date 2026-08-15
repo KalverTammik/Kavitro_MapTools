@@ -37,6 +37,7 @@ from .coordinate_duct_dialog import (
     CoordinateDuctDialog,
     CoordinateDuctInputError,
 )
+from .diagnostics_dialog import DiagnosticsDialog
 
 __all__ = [
     "ManholeConfiguratorDialog",
@@ -62,4 +63,5 @@ __all__ = [
     "ConnectionPointDialog",
     "CoordinateDuctDialog",
     "CoordinateDuctInputError",
+    "DiagnosticsDialog",
 ]

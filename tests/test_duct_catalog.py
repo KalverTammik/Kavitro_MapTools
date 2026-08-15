@@ -97,6 +97,30 @@ class DuctLayerCatalogTest(unittest.TestCase):
         self.assertFalse(option.enabled)
         self.assertIn("alamfilter", option.reason)
 
+    def test_omits_abandoned_water_layer_by_generator_metadata(self) -> None:
+        layer = QgsVectorLayer(
+            "LineString?crs=EPSG:3301&field=NETWORK_ID:integer",
+            "Mahajäetud veetorud",
+            "memory",
+        )
+        layer.setCustomProperty("evel_project_table", "sn_water_duct")
+        layer.setCustomProperty(
+            "evel_preview_checkbox",
+            "cbWaterAbandoned",
+        )
+        layer.setDefaultValueDefinition(
+            layer.fields().lookupField("NETWORK_ID"),
+            QgsDefaultValue("312"),
+        )
+        self.project.addMapLayer(layer)
+
+        options = DuctLayerCatalog().discover(
+            self.project,
+            check_runtime=False,
+        )
+
+        self.assertEqual((), options)
+
     @staticmethod
     def _sewer_layer(
         name: str,

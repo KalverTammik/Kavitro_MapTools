@@ -426,6 +426,47 @@ QDialog#evelDuctEditorDialog QPushButton#cancelButton:hover {
 }
 """
 
+DIAGNOSTICS_LIGHT_STYLE = """
+QDialog#evelDiagnosticsDialog QFrame#diagnosticsHeroFrame {
+    background: #ffffff;
+    border: 1px solid #d0d7de;
+    border-radius: 9px;
+}
+QDialog#evelDiagnosticsDialog QLabel#diagnosticsTitle {
+    color: #111416;
+    font-size: 17px;
+    font-weight: 700;
+}
+QDialog#evelDiagnosticsDialog QLabel#diagnosticsStatus {
+    color: #57606a;
+    font-weight: 600;
+}
+QDialog#evelDiagnosticsDialog QLabel#diagnosticsStatus[severity="error"] {
+    color: #c53030;
+}
+QDialog#evelDiagnosticsDialog QLabel#diagnosticsStatus[severity="warning"] {
+    color: #8a6100;
+}
+QDialog#evelDiagnosticsDialog QLabel#diagnosticsStatus[severity="success"] {
+    color: #0f766e;
+}
+QDialog#evelDiagnosticsDialog QLabel#diagnosticsHint {
+    color: #57606a;
+}
+QDialog#evelDiagnosticsDialog QPlainTextEdit#diagnosticsReport {
+    background: #ffffff;
+    color: #1f2933;
+    border: 1px solid #c8d2dc;
+    border-radius: 8px;
+    padding: 9px;
+    font-family: Consolas, "Courier New", monospace;
+}
+QDialog#evelDiagnosticsDialog QLabel#diagnosticsCopyFeedback {
+    color: #0f766e;
+    font-weight: 600;
+}
+"""
+
 HYDRANT_EDITOR_LIGHT_STYLE = """
 QDialog#evelHydrantDialog QFrame#hydrantHeroFrame {
     background: #ffffff;
@@ -545,6 +586,17 @@ QToolBar#EVELNetworkToolsToolbar QToolButton:disabled {
     background: transparent;
     color: #7d8790;
 }
+QToolBar#EVELNetworkToolsToolbar QToolButton#EVELStatusToolButton {
+    background: #ffffff;
+    color: #1f2933;
+    border: 1px solid #c8d2dc;
+    padding: 2px 7px;
+    font-weight: 600;
+}
+QToolBar#EVELNetworkToolsToolbar QToolButton#EVELStatusToolButton:hover {
+    background: #edf6ff;
+    border-color: #2188ff;
+}
 QToolBar#EVELNetworkToolsToolbar::separator {
     background: #d0d7de;
     width: 1px;
@@ -553,26 +605,36 @@ QToolBar#EVELNetworkToolsToolbar::separator {
 """
 
 EVEL_MENU_LIGHT_STYLE = """
-QMenu#EVELAddDuctMenu {
+QMenu#EVELAddDuctMenu,
+QMenu#EVELStatusMenu,
+QMenu#EVELStatusToolsMenu {
     background: #ffffff;
     color: #24292e;
     border: 1px solid #d0d7de;
     padding: 4px;
 }
-QMenu#EVELAddDuctMenu::item {
+QMenu#EVELAddDuctMenu::item,
+QMenu#EVELStatusMenu::item,
+QMenu#EVELStatusToolsMenu::item {
     background: transparent;
     color: #24292e;
     border-radius: 4px;
     padding: 6px 24px 6px 8px;
 }
-QMenu#EVELAddDuctMenu::item:selected {
+QMenu#EVELAddDuctMenu::item:selected,
+QMenu#EVELStatusMenu::item:selected,
+QMenu#EVELStatusToolsMenu::item:selected {
     background: #0078d4;
     color: #ffffff;
 }
-QMenu#EVELAddDuctMenu::item:disabled {
+QMenu#EVELAddDuctMenu::item:disabled,
+QMenu#EVELStatusMenu::item:disabled,
+QMenu#EVELStatusToolsMenu::item:disabled {
     color: #7d8790;
 }
-QMenu#EVELAddDuctMenu::separator {
+QMenu#EVELAddDuctMenu::separator,
+QMenu#EVELStatusMenu::separator,
+QMenu#EVELStatusToolsMenu::separator {
     background: #e1e4e8;
     height: 1px;
     margin: 4px 6px;
@@ -653,6 +715,7 @@ def apply_evel_light_style(
     pumping_station: bool = False,
     duct_editor: bool = False,
     hydrant_editor: bool = False,
+    diagnostics: bool = False,
 ) -> None:
     """Apply the fixed light theme; EVEL intentionally has no theme toggle."""
 
@@ -668,6 +731,8 @@ def apply_evel_light_style(
         style += DUCT_EDITOR_LIGHT_STYLE
     if hydrant_editor:
         style += HYDRANT_EDITOR_LIGHT_STYLE
+    if diagnostics:
+        style += DIAGNOSTICS_LIGHT_STYLE
     widget.setStyleSheet(style)
     QTimer.singleShot(0, lambda root=widget: _finish_light_style(root))
 

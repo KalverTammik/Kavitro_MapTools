@@ -24,6 +24,10 @@ peab asuma aktiivse QGIS-i profiili `python/plugins` kataloogis.
 Praegune arendusversioon sisaldab:
 
 - püsivat EVEL-i tööriistariba;
+- kontekstitundlikku tööriistariba olekunuppu, mis kuvab aktiivse kihi,
+  käimasoleva kaarditööriista ja järgmise sammu ning koondab menüüsse kõigi
+  tööriistade valmisoleku koos mittesaadavuse põhjustega; detailne diagnostika
+  avaneb valitava tekstiga popup-aknas ja kogu raporti saab ühe nupuga kopeerida;
 - EVEL-i tööriistariba, torutüübi menüü ja kõigi kohandatud dialoogide
   fikseeritud Kavitro-stiilis heledat kujundust; teemalülitit ei ole;
 - **Lisa toru** rippmenüüd, mis kuvab projekti tegelikud vee- ja isevoolsete

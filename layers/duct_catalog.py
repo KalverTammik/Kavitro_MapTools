@@ -18,6 +18,7 @@ from .project_inspector import EVELProjectInspector, ProjectInspection
 
 WATER_DUCT_TABLE = "sn_water_duct"
 SEWER_DUCT_TABLE = "sn_sewer_duct"
+ABANDONED_WATER_COMPONENT_KEYS = frozenset({"cbwaterabandoned"})
 GRAVITY_NETTYPE_ID = 309
 GRAVITY_COMPONENT_KEYS = frozenset(
     {"cbcombinedsewer", "cbdrainage"}
@@ -96,7 +97,14 @@ class DuctLayerCatalog:
         check_runtime: bool,
     ) -> DuctLayerOption | None:
         network_id = self._default_int(layer, "NETWORK_ID")
-        if network_id is None or "REMOVAL_YEAR" in layer.subsetString().upper():
+        component_key = str(
+            layer.customProperty("evel_preview_checkbox", "")
+        ).strip().casefold()
+        if (
+            network_id is None
+            or component_key in ABANDONED_WATER_COMPONENT_KEYS
+            or "REMOVAL_YEAR" in layer.subsetString().upper()
+        ):
             return None
         inspection = self.water_inspector.inspect(
             project,

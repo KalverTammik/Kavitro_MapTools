@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from qgis.PyQt.QtCore import Qt
 from qgis.PyQt.QtWidgets import (
     QAction,
     QApplication,
@@ -10,7 +11,7 @@ from qgis.PyQt.QtWidgets import (
     QStyle,
     QToolButton,
 )
-from qgis.core import Qgis, QgsMessageLog, QgsProject
+from qgis.core import Qgis, QgsMessageLog, QgsProject, QgsVectorLayer
 
 from .layers import (
     DuctLayerCatalog,
@@ -36,6 +37,7 @@ from .map_tools import (
 )
 from .importer import EvelImportTargetInspector
 from .ui import (
+    DiagnosticsDialog,
     EvelClearDataDialog,
     EvelImportDialog,
     CoordinateDuctDialog,
@@ -55,6 +57,7 @@ from .ui.icon_catalog import (
     ICON_HYDRANT,
     ICON_IMPORT,
     ICON_PUMPING_STATION,
+    ICON_REFRESH,
     ICON_REPAIR_NETWORK,
     ICON_REVERSE_FLOW,
     ICON_SEWER_MANHOLE,
@@ -74,6 +77,7 @@ class EVELNetworkToolsPlugin:
         self.iface = iface
         self.toolbar = None
         self.status_action = None
+        self.status_menu = None
         self.add_duct_action = None
         self.add_duct_menu = None
         self.edit_duct_action = None
@@ -108,6 +112,7 @@ class EVELNetworkToolsPlugin:
         self._import_reason = ""
         self._import_dialog: EvelImportDialog | None = None
         self._clear_data_dialog: EvelClearDataDialog | None = None
+        self._diagnostics_dialog: DiagnosticsDialog | None = None
         self._add_controller: AddWaterDuctController | None = None
         self._gravity_controller: AddGravityDuctController | None = None
         self._edit_duct_controller: EditDuctController | None = None
@@ -128,10 +133,21 @@ class EVELNetworkToolsPlugin:
         self.toolbar = self.iface.addToolBar("EVEL Võrgutööriistad")
         self.toolbar.setObjectName(TOOLBAR_OBJECT_NAME)
 
-        self.status_action = QAction("EVEL", self.iface.mainWindow())
+        self.status_action = QAction("EVEL · olek", self.iface.mainWindow())
         self.status_action.setObjectName("EVELNetworkStatusAction")
         self.status_action.triggered.connect(self.show_diagnostics)
+        self.status_menu = QMenu(self.iface.mainWindow())
+        self.status_menu.setObjectName("EVELStatusMenu")
+        self.status_menu.setToolTipsVisible(True)
+        self.status_action.setMenu(self.status_menu)
         self.toolbar.addAction(self.status_action)
+        apply_evel_toolbar_light_style(self.toolbar, self.status_menu)
+        status_button = self.toolbar.widgetForAction(self.status_action)
+        if isinstance(status_button, QToolButton):
+            status_button.setObjectName("EVELStatusToolButton")
+            status_button.setPopupMode(QToolButton.InstantPopup)
+            status_button.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
+        self._connect(self.status_menu.aboutToShow, self._rebuild_status_menu)
         self.toolbar.addSeparator()
 
         self.add_duct_action = self._add_tool_action(
@@ -285,6 +301,9 @@ class EVELNetworkToolsPlugin:
             ICON_REPAIR_NETWORK,
         )
 
+        for action in self._interactive_tool_actions():
+            self._connect(action.toggled, self._on_tool_toggled)
+
         project = QgsProject.instance()
         self._connect(self.iface.currentLayerChanged, self.refresh_state)
         self._connect(project.readProject, self.refresh_state)
@@ -296,6 +315,9 @@ class EVELNetworkToolsPlugin:
         self.refresh_state()
 
     def unload(self):
+        if self._diagnostics_dialog is not None:
+            self._diagnostics_dialog.close()
+            self._diagnostics_dialog = None
         if self._import_dialog is not None:
             self._import_dialog.close()
             self._import_dialog = None
@@ -342,6 +364,7 @@ class EVELNetworkToolsPlugin:
             self.toolbar = None
 
         self.status_action = None
+        self.status_menu = None
         self.add_duct_action = None
         self.add_duct_menu = None
         self.edit_duct_action = None
@@ -369,23 +392,25 @@ class EVELNetworkToolsPlugin:
         """Re-evaluate the open project and update toolbar feedback."""
 
         project = QgsProject.instance()
-        try:
-            self._inspection = self._inspector.inspect(
-                project, self.iface.activeLayer()
-            )
-        except Exception as error:  # pragma: no cover - QGIS runtime guard
-            self._inspection = None
-            QgsMessageLog.logMessage(
-                f"Käivitusdiagnostika ebaõnnestus: {error}",
-                MESSAGE_TAG,
-                Qgis.MessageLevel.Critical,
-            )
+        active_layer = self.iface.activeLayer()
         try:
             self._duct_options = self._duct_catalog.discover(project)
         except Exception as error:  # pragma: no cover - QGIS runtime guard
             self._duct_options = ()
             QgsMessageLog.logMessage(
                 f"Torukihtide kataloogi koostamine ebaõnnestus: {error}",
+                MESSAGE_TAG,
+                Qgis.MessageLevel.Critical,
+            )
+        try:
+            self._inspection = self._resolve_project_water_inspection(
+                project,
+                active_layer,
+            )
+        except Exception as error:  # pragma: no cover - QGIS runtime guard
+            self._inspection = None
+            QgsMessageLog.logMessage(
+                f"Käivitusdiagnostika ebaõnnestus: {error}",
                 MESSAGE_TAG,
                 Qgis.MessageLevel.Critical,
             )
@@ -404,51 +429,134 @@ class EVELNetworkToolsPlugin:
         )
 
         self._rebuild_add_duct_menu()
-        self._update_status_action()
         self._update_tool_actions()
+        self._update_status_action()
 
-    def show_diagnostics(self) -> None:
-        """Show the current preflight result without changing the project."""
+    def _resolve_project_water_inspection(
+        self,
+        project: QgsProject,
+        active_layer,
+    ) -> ProjectInspection:
+        """Resolve water topology from a pipe layer, not any active display layer."""
 
-        active_option = self._active_duct_option()
-        inspection = self._inspection
-        if (
-            active_option is not None
-            and active_option.workflow is DuctWorkflow.GRAVITY_GEOMETRY
-        ):
-            message = (
-                f"Aktiivne torukiht „{active_option.label}“ on kasutatav."
-                if active_option.enabled
-                else active_option.reason
+        water_options = tuple(
+            option
+            for option in self._duct_options
+            if option.workflow is DuctWorkflow.WATER_TOPOLOGY
+            and option.inspection is not None
+        )
+        active_id = active_layer.id() if active_layer is not None else ""
+        active_option = next(
+            (
+                option
+                for option in water_options
+                if option.layer.id() == active_id
+            ),
+            None,
+        )
+        if active_option is not None:
+            return active_option.inspection
+
+        if self._is_usable_water_edge_candidate(active_layer):
+            return self._inspector.inspect(project, active_layer)
+
+        active_network_id = self._layer_default_int(
+            active_layer,
+            "NETWORK_ID",
+        )
+        matching_option = next(
+            (
+                option
+                for option in water_options
+                if option.enabled
+                and option.network_id == active_network_id
+            ),
+            None,
+        )
+        if matching_option is not None:
+            return matching_option.inspection
+
+        enabled_option = next(
+            (option for option in water_options if option.enabled),
+            None,
+        )
+        if enabled_option is not None:
+            return enabled_option.inspection
+
+        option_by_layer_id = {
+            option.layer.id(): option
+            for option in water_options
+        }
+        first_project_inspection = None
+        for layer in project.mapLayers().values():
+            if not isinstance(layer, QgsVectorLayer):
+                continue
+            if not self._is_usable_water_edge_candidate(layer):
+                continue
+            option = option_by_layer_id.get(layer.id())
+            candidate = (
+                option.inspection
+                if option is not None
+                else self._inspector.inspect(project, layer)
             )
-            level = (
-                Qgis.MessageLevel.Success
-                if active_option.enabled
-                else Qgis.MessageLevel.Critical
-            )
-        elif inspection is None:
-            message = "Käivitusdiagnostikat ei õnnestunud koostada."
-            level = Qgis.MessageLevel.Critical
-        elif inspection.errors:
-            message = inspection.short_message()
-            level = Qgis.MessageLevel.Critical
-        elif inspection.warnings:
-            message = inspection.short_message()
-            level = Qgis.MessageLevel.Warning
-        else:
-            message = inspection.short_message()
-            level = Qgis.MessageLevel.Success
+            if first_project_inspection is None:
+                first_project_inspection = candidate
+            if candidate.can_add_water_duct:
+                return candidate
 
-        self.iface.messageBar().pushMessage(
-            MESSAGE_TAG, message, level=level, duration=8
+        if water_options:
+            return water_options[0].inspection
+        if first_project_inspection is not None:
+            return first_project_inspection
+
+        return self._inspector.inspect(project, None)
+
+    def show_diagnostics(self, *_args) -> None:
+        """Open or refresh the copyable detailed diagnostics window."""
+
+        self.refresh_state()
+        report = self._diagnostics_report()
+        status_text = self._status_headline()
+        status_icon = (
+            self.status_action.icon()
+            if self.status_action is not None
+            else catalog_icon(ICON_ERROR)
         )
 
-        if inspection is not None and inspection.diagnostics:
-            details = "\n".join(
-                f"[{item.level.value}] {item.code}: {item.message}"
-                for item in inspection.diagnostics
-            )
-            QgsMessageLog.logMessage(details, MESSAGE_TAG, level)
+        dialog = self._diagnostics_dialog
+        if dialog is not None:
+            try:
+                dialog.set_report(report, status_text, status_icon)
+                dialog.show()
+                dialog.raise_()
+                dialog.activateWindow()
+                return
+            except RuntimeError:
+                self._diagnostics_dialog = None
+
+        dialog = DiagnosticsDialog(
+            report,
+            status_text,
+            status_icon,
+            parent=self.iface.mainWindow(),
+        )
+        dialog.destroyed.connect(self._diagnostics_dialog_reference)
+        self._diagnostics_dialog = dialog
+        dialog.show()
+        dialog.raise_()
+        dialog.activateWindow()
+
+        has_error, has_warning, _message = self._status_details()
+        if has_error:
+            level = Qgis.MessageLevel.Critical
+        elif has_warning:
+            level = Qgis.MessageLevel.Warning
+        else:
+            level = Qgis.MessageLevel.Success
+        QgsMessageLog.logMessage(report, MESSAGE_TAG, level)
+
+    def _diagnostics_dialog_reference(self, *_args) -> None:
+        self._diagnostics_dialog = None
 
     def _add_tool_action(
         self,
@@ -468,28 +576,7 @@ class EVELNetworkToolsPlugin:
         if self.status_action is None:
             return
 
-        active_option = self._active_duct_option()
-        inspection = self._inspection
-        if (
-            active_option is not None
-            and active_option.workflow is DuctWorkflow.GRAVITY_GEOMETRY
-        ):
-            has_error = not active_option.enabled
-            has_warning = False
-            message = (
-                f"Aktiivne torukiht „{active_option.label}“ on kasutatav."
-                if active_option.enabled
-                else active_option.reason
-            )
-        else:
-            has_error = inspection is None or bool(inspection.errors)
-            has_warning = bool(inspection and inspection.warnings)
-            message = (
-                inspection.short_message()
-                if inspection is not None
-                else "Käivitusdiagnostika ebaõnnestus."
-            )
-
+        has_error, has_warning, message = self._status_details()
         if has_error:
             icon = catalog_icon(ICON_ERROR)
             fallback = QStyle.SP_MessageBoxCritical
@@ -503,9 +590,501 @@ class EVELNetworkToolsPlugin:
             icon = QApplication.style().standardIcon(fallback)
         self.status_action.setIcon(icon)
 
+        layer_label = self._active_layer_label()
+        tool_name, guidance, compact_guidance = self._active_tool_guidance()
+        if tool_name is not None:
+            summary = (
+                f"{tool_name} · {self._ellipsize(layer_label, 26)} — "
+                f"{compact_guidance}"
+            )
+        elif has_error:
+            summary = (
+                f"EVEL · {self._ellipsize(layer_label, 30)} — "
+                "vajab tähelepanu"
+            )
+        elif has_warning:
+            summary = (
+                f"EVEL · {self._ellipsize(layer_label, 30)} — "
+                "kontrolli hoiatusi"
+            )
+        else:
+            summary = f"EVEL · {self._ellipsize(layer_label, 34)} — vali tööriist"
+        self.status_action.setText(summary)
         self.status_action.setToolTip(
-            f"EVEL Võrgutööriistad\n{message}\nKlõpsa diagnostika kuvamiseks."
+            "EVEL Võrgutööriistad\n"
+            f"Aktiivne kiht: {layer_label}\n"
+            f"Tööriist: {tool_name or 'ükski kaarditööriist pole aktiivne'}\n"
+            f"Järgmine samm: {guidance}\n"
+            f"Olek: {message}\n"
+            "Klõpsa olekupaneeli avamiseks."
         )
+        self._rebuild_status_menu()
+        self._update_open_diagnostics_dialog()
+
+    def _status_details(self) -> tuple[bool, bool, str]:
+        """Return the current project severity and its concise explanation."""
+
+        active_option = self._active_duct_option()
+        inspection = self._inspection
+        if active_option is not None:
+            has_error = not active_option.enabled
+            has_warning = bool(
+                active_option.inspection
+                and active_option.inspection.warnings
+                and not has_error
+            )
+            message = (
+                f"Aktiivne torukiht „{active_option.label}“ on kasutatav."
+                if active_option.enabled
+                else active_option.reason
+            )
+            return has_error, has_warning, message
+
+        usable = self._has_usable_workflow()
+        if not usable:
+            message = (
+                inspection.short_message()
+                if inspection is not None
+                else "Käivitusdiagnostika ebaõnnestus."
+            )
+            return True, False, message
+
+        if inspection is not None and inspection.errors:
+            return (
+                False,
+                True,
+                "Osa veevõrgu töövoogudest pole kasutatav: "
+                + inspection.short_message(),
+            )
+        if inspection is not None and inspection.warnings:
+            return False, True, inspection.short_message()
+
+        active_layer = self.iface.activeLayer()
+        if active_layer is None:
+            message = "EVEL-i tööriistad on kasutatavad; aktiivset kihti pole."
+        elif self._is_evel_project_layer(active_layer):
+            message = (
+                f"Aktiivne EVEL-i kiht „{self._active_layer_label()}“; "
+                "tööriistad on kasutatavad."
+            )
+        else:
+            message = (
+                "EVEL-i tööriistad on kasutatavad; aktiivne kiht "
+                f"„{self._active_layer_label()}“ ei ole EVEL-i projektikiht."
+            )
+
+        return False, False, message
+
+    def _has_usable_workflow(self) -> bool:
+        return bool(
+            any(option.enabled for option in self._duct_options)
+            or (
+                self._inspection is not None
+                and self._inspection.can_add_water_duct
+            )
+            or self._hydrant_ready
+            or self._connection_point_ready
+            or self._sewer_manhole_ready
+            or self._sewer_pumping_station_ready
+            or self._import_ready
+        )
+
+    @staticmethod
+    def _is_water_edge_layer(layer) -> bool:
+        if layer is None:
+            return False
+        role = str(layer.customProperty("evel_topology_role", "")).casefold()
+        table = str(layer.customProperty("evel_project_table", "")).casefold()
+        return role == "water_edge" or table == "sn_water_duct"
+
+    @classmethod
+    def _is_usable_water_edge_candidate(cls, layer) -> bool:
+        if not cls._is_water_edge_layer(layer):
+            return False
+        component_key = str(
+            layer.customProperty("evel_preview_checkbox", "")
+        ).strip().casefold()
+        if component_key == "cbwaterabandoned":
+            return False
+        return "REMOVAL_YEAR" not in layer.subsetString().upper()
+
+    @staticmethod
+    def _is_evel_project_layer(layer) -> bool:
+        if layer is None:
+            return False
+        value = layer.customProperty("evel_project_layer", False)
+        if isinstance(value, bool):
+            return value
+        return str(value).strip().casefold() in {"1", "true", "yes", "on"}
+
+    @staticmethod
+    def _layer_default_int(layer, field_name: str) -> int | None:
+        if not isinstance(layer, QgsVectorLayer):
+            return None
+        field_index = layer.fields().lookupField(field_name)
+        if field_index < 0:
+            return None
+        expression = layer.defaultValueDefinition(
+            field_index
+        ).expression().strip()
+        if not expression:
+            return None
+        try:
+            return int(expression.strip("'\""))
+        except (TypeError, ValueError):
+            return None
+
+    def _status_headline(self) -> str:
+        has_error, has_warning, _message = self._status_details()
+        if has_error:
+            return "EVEL vajab tähelepanu"
+        if has_warning:
+            return "EVEL on kasutatav hoiatustega"
+        return "EVEL on valmis"
+
+    def _tool_groups(self):
+        """Return toolbar actions grouped by the user's network workflow."""
+
+        return (
+            (
+                "Torud",
+                (
+                    self.add_duct_action,
+                    self.edit_duct_action,
+                    self.reverse_action,
+                ),
+            ),
+            (
+                "Sõlmed ja rajatised",
+                (
+                    self.configure_node_action,
+                    self.hydrant_action,
+                    self.connection_point_action,
+                    self.sewer_manhole_action,
+                    self.sewer_pumping_station_action,
+                ),
+            ),
+            (
+                "Andmed",
+                (self.import_action, self.clear_data_action),
+            ),
+            (
+                "Kontroll",
+                (self.check_action, self.repair_action),
+            ),
+        )
+
+    def _interactive_tool_actions(self) -> tuple[QAction, ...]:
+        """Return actions which represent an active map interaction."""
+
+        return tuple(
+            action
+            for action in (
+                self.add_duct_action,
+                self.edit_duct_action,
+                self.configure_node_action,
+                self.hydrant_action,
+                self.connection_point_action,
+                self.sewer_manhole_action,
+                self.sewer_pumping_station_action,
+                self.reverse_action,
+            )
+            if action is not None
+        )
+
+    def _active_layer_label(self) -> str:
+        layer = self.iface.activeLayer()
+        if layer is None:
+            return "kiht puudub"
+        try:
+            return layer.name() or "nimetu kiht"
+        except RuntimeError:
+            return "kiht pole enam saadaval"
+
+    def _active_tool_guidance(self) -> tuple[str | None, str, str]:
+        guidance_by_action = (
+            (
+                self.add_duct_action,
+                "Klõpsa kaardil toru alguspunktil ja jätka joonestamist.",
+                "klõpsa alguspunktil",
+            ),
+            (
+                self.edit_duct_action,
+                "Klõpsa kaardil olemasoleval EVEL-i torul.",
+                "klõpsa torul",
+            ),
+            (
+                self.configure_node_action,
+                "Klõpsa kaardil veesõlmel, mida soovid konfigureerida.",
+                "klõpsa veesõlmel",
+            ),
+            (
+                self.hydrant_action,
+                "Klõpsa hüdrandil, veesõlmel või veetorul.",
+                "klõpsa objektil",
+            ),
+            (
+                self.connection_point_action,
+                "Klõpsa liitumispunktil või vee-/kanalisatsioonisõlmel.",
+                "klõpsa punktil või sõlmel",
+            ),
+            (
+                self.sewer_manhole_action,
+                "Klõpsa isevoolsel torul või kanalisatsioonisõlmel.",
+                "klõpsa torul või sõlmel",
+            ),
+            (
+                self.sewer_pumping_station_action,
+                "Klõpsa kanalisatsioonitorul või -sõlmel.",
+                "klõpsa torul või sõlmel",
+            ),
+            (
+                self.reverse_action,
+                "Klõpsa torul voolusuuna määramiseks või pööramiseks.",
+                "klõpsa torul",
+            ),
+        )
+        for action, guidance, compact_guidance in guidance_by_action:
+            if action is not None and action.isChecked():
+                return action.text(), guidance, compact_guidance
+
+        ready = any(
+            action is not None and action.isEnabled()
+            for _group, actions in self._tool_groups()
+            for action in actions
+        )
+        if ready:
+            return None, "Vali sobiv tööriist.", "vali tööriist"
+        if self.iface.activeLayer() is None:
+            return (
+                None,
+                "Ava EVEL-i projekt või vali toetatud võrgukiht.",
+                "vali võrgukiht",
+            )
+        if self._inspection is not None:
+            return (
+                None,
+                self._inspection.short_message(),
+                "kontrolli projekti",
+            )
+        return None, "Kontrolli projekti valmisolekut.", "kontrolli projekti"
+
+    @staticmethod
+    def _ellipsize(text: str, limit: int) -> str:
+        if len(text) <= limit:
+            return text
+        return text[: max(1, limit - 1)].rstrip() + "…"
+
+    @staticmethod
+    def _tool_reason(action: QAction) -> str:
+        lines = [line.strip() for line in action.toolTip().splitlines()]
+        lines = [line for line in lines if line]
+        if lines and lines[0].rstrip(":") == action.text().rstrip(":"):
+            lines = lines[1:]
+        return " ".join(lines) or (
+            "Tööriist on kasutatav."
+            if action.isEnabled()
+            else "Tööriist ei ole praeguses projektikontekstis kasutatav."
+        )
+
+    def _diagnostics_report(self) -> str:
+        """Build a complete plain-text snapshot without exposing data sources."""
+
+        project = QgsProject.instance()
+        has_error, has_warning, message = self._status_details()
+        tool_name, guidance, _compact = self._active_tool_guidance()
+        project_title = project.title().strip() or "pealkiri puudub"
+        project_file = project.fileName().strip() or "salvestamata projekt"
+        severity = (
+            "VIGA" if has_error else "HOIATUS" if has_warning else "VALMIS"
+        )
+        lines = [
+            "EVEL VÕRGUTÖÖRIISTADE DIAGNOSTIKA",
+            "=================================",
+            f"Olek: {severity} — {self._status_headline()}",
+            f"Kokkuvõte: {message}",
+            f"Projekt: {project_title}",
+            f"Projektifail: {project_file}",
+            f"Aktiivne kiht: {self._active_layer_label()}",
+            (
+                "Aktiivne tööriist: "
+                + (tool_name or "ükski kaarditööriist pole aktiivne")
+            ),
+            f"Järgmine samm: {guidance}",
+            "",
+            "PROJEKTIDIAGNOSTIKA",
+            "--------------------",
+        ]
+
+        inspection = self._inspection
+        if inspection is None:
+            lines.append("Käivitusdiagnostikat ei õnnestunud koostada.")
+        elif not inspection.diagnostics:
+            lines.append("Diagnostikakirjeid pole.")
+        else:
+            level_labels = {
+                "error": "VIGA",
+                "warning": "HOIATUS",
+                "info": "INFO",
+            }
+            for item in inspection.diagnostics:
+                level_label = level_labels.get(
+                    item.level.value,
+                    item.level.value.upper(),
+                )
+                lines.append(f"[{level_label}] {item.code}")
+                lines.append(f"  {item.message}")
+                if item.layer_id:
+                    lines.append(f"  Kihi ID: {item.layer_id}")
+                lines.append("")
+            if lines[-1] == "":
+                lines.pop()
+
+        lines.extend(
+            [
+                "",
+                "TORUKIHTIDE VALIKUD",
+                "-------------------",
+            ]
+        )
+        if not self._duct_options:
+            lines.append("Toetatud torukihte ei leitud.")
+        else:
+            workflow_labels = {
+                DuctWorkflow.WATER_TOPOLOGY: "vee topoloogia",
+                DuctWorkflow.GRAVITY_GEOMETRY: "isevoolne geomeetria",
+            }
+            for option in self._duct_options:
+                state = "VALMIS" if option.enabled else "POLE SAADAVAL"
+                lines.append(f"[{state}] {option.label}")
+                lines.append(
+                    "  Töövoog: "
+                    + workflow_labels.get(option.workflow, option.workflow.value)
+                )
+                lines.append(f"  Võrgu ID: {option.network_id}")
+                lines.append(f"  Võrgutüübi ID: {option.nettype_id}")
+                lines.append(f"  Põhjus: {option.reason or '—'}")
+
+        lines.extend(
+            [
+                "",
+                "TÖÖRIISTADE VALMISOLEK",
+                "----------------------",
+            ]
+        )
+        for group_name, actions in self._tool_groups():
+            lines.append(group_name.upper())
+            for action in actions:
+                if action is None:
+                    continue
+                state = "VALMIS" if action.isEnabled() else "POLE SAADAVAL"
+                lines.append(f"  [{state}] {action.text()}")
+                lines.append(f"    {self._tool_reason(action)}")
+
+        return "\n".join(lines).rstrip() + "\n"
+
+    def _update_open_diagnostics_dialog(self) -> None:
+        dialog = self._diagnostics_dialog
+        if dialog is None or self.status_action is None:
+            return
+        try:
+            dialog.set_report(
+                self._diagnostics_report(),
+                self._status_headline(),
+                self.status_action.icon(),
+            )
+        except RuntimeError:
+            self._diagnostics_dialog = None
+
+    def _rebuild_status_menu(self) -> None:
+        menu = self.status_menu
+        if menu is None or self.status_action is None:
+            return
+        menu.clear()
+
+        _has_error, _has_warning, message = self._status_details()
+        headline = self._status_headline()
+        headline_action = menu.addAction(self.status_action.icon(), headline)
+        headline_action.setToolTip(message)
+        headline_action.triggered.connect(self.show_diagnostics)
+
+        layer_label = self._active_layer_label()
+        tool_name, guidance, _compact_guidance = self._active_tool_guidance()
+        context_lines = (
+            (f"Aktiivne kiht: {self._ellipsize(layer_label, 64)}", layer_label),
+            (
+                "Tööriist: "
+                + (tool_name or "ükski kaarditööriist pole aktiivne"),
+                tool_name or "Ükski kaarditööriist pole aktiivne.",
+            ),
+            (
+                f"Järgmine samm: {self._ellipsize(guidance, 84)}",
+                guidance,
+            ),
+        )
+        for text, tooltip in context_lines:
+            context_action = menu.addAction(text)
+            context_action.setEnabled(False)
+            context_action.setToolTip(tooltip)
+
+        menu.addSeparator()
+        readiness_menu = menu.addMenu("Tööriistade valmisolek")
+        readiness_menu.setObjectName("EVELStatusToolsMenu")
+        readiness_menu.setToolTipsVisible(True)
+        readiness_menu.setIcon(catalog_icon(ICON_CHECK_NETWORK))
+        apply_evel_toolbar_light_style(None, readiness_menu)
+        for group_name, actions in self._tool_groups():
+            readiness_menu.addSection(group_name)
+            for action in actions:
+                if action is None:
+                    continue
+                enabled = action.isEnabled()
+                reason = self._tool_reason(action)
+                state = "valmis" if enabled else "pole saadaval"
+                status_item = readiness_menu.addAction(
+                    catalog_icon(
+                        ICON_STATUS_OK if enabled else ICON_STATUS_WARNING
+                    ),
+                    f"{action.text()} — {state}",
+                )
+                status_item.setToolTip(reason)
+                status_item.setStatusTip(reason)
+                status_item.triggered.connect(
+                    lambda _checked=False,
+                    title=action.text(),
+                    detail=reason,
+                    ready=enabled: self._show_tool_readiness(
+                        title, detail, ready
+                    )
+                )
+
+        menu.addSeparator()
+        refresh_action = menu.addAction("Värskenda olekut")
+        set_catalog_icon(refresh_action, ICON_REFRESH)
+        refresh_action.triggered.connect(self.refresh_state)
+        diagnostics_action = menu.addAction("Ava detailne diagnostika…")
+        diagnostics_action.setIcon(self.status_action.icon())
+        diagnostics_action.triggered.connect(self.show_diagnostics)
+
+    def _show_tool_readiness(
+        self,
+        title: str,
+        detail: str,
+        ready: bool,
+    ) -> None:
+        self.iface.messageBar().pushMessage(
+            MESSAGE_TAG,
+            f"{title}: {detail}",
+            level=(
+                Qgis.MessageLevel.Success
+                if ready
+                else Qgis.MessageLevel.Info
+            ),
+            duration=8,
+        )
+
+    def _on_tool_toggled(self, _checked: bool) -> None:
+        self._update_status_action()
 
     def _update_tool_actions(self) -> None:
         """Enable tools whose implementation and project preflight are ready."""
