@@ -37,6 +37,7 @@ from EVEL_network_tools.topology import (
     sewer_clock_angle,
 )
 from EVEL_network_tools.ui import (
+    EvelDateEditor,
     SewerManholeClockDialog,
     SewerPumpingStationDialog,
 )
@@ -532,6 +533,13 @@ class SewerManholeTest(unittest.TestCase):
         self.assertTrue(dialog.property("evelLightTheme"))
         self.assertIn("#f6f7f8", dialog.styleSheet())
         self.assertNotIn("#0a1220", dialog.styleSheet())
+        self.assertIsInstance(dialog.pump_date_control, EvelDateEditor)
+        self.assertFalse(dialog.pump_date_edit.calendarPopup())
+        self.assertTrue(dialog.pump_date_known.isHidden())
+        dialog.pump_date_control.set_date(QDate(2023, 4, 5))
+        self.assertTrue(dialog.pump_date_known.isChecked())
+        dialog.pump_date_control.clear_date()
+        self.assertFalse(dialog.pump_date_known.isChecked())
         self.assertEqual(4, dialog.tabs.count())
         self.assertIn("Pumbad", dialog.tabs.tabText(0))
         self.assertIn("\n", dialog.tabs.tabText(0))

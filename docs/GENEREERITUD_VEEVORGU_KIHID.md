@@ -89,9 +89,9 @@ Uue objekti tühjade väljade korral kasutatakse järgmisi algvalikuid:
 
 | Võrk | Otstarve | Materjal | Mõõdu tüüp | Mõõt | Rõhuklass | Ringjäikus |
 |---|---|---|---|---:|---|---|
-| Vesi | Tarbijatoru | PE | De | 32 | PN10 | Määramata |
-| Tuletõrjevesi | Peatoru | PE | De | 110 | PN10 | Määramata |
-| Toorvesi | Peatoru | PE | De | 110 | PN10 | Määramata |
+| Vesi | Tarbijatoru | PE | De | 32 | PN10 | SN16 |
+| Tuletõrjevesi | Peatoru | PE | De | 110 | PN10 | SN16 |
+| Toorvesi | Peatoru | PE | De | 110 | PN10 | SN16 |
 
 Eelistused lahendatakse projektikihi lookup-valikute kuvatavate nimetuste
 järgi. Olemasoleva objekti ega juba täidetud välja väärtust ei kirjutata üle.
@@ -306,11 +306,22 @@ QGIS-i redigeerimisoperatsiooni.
 
 ## 6. Vormid
 
-Veetoru lisamisel kasutatakse ühise heleda kujundusega kolme sammuga EVEL-i
-torudialoogi: **Toru põhiandmed → Kõrgused ja vool → Haldus ja kvaliteet**. Dialoog loeb
-väljade aliased, lookup-valikud, vaikeväärtused ja piirangud aktiivse veetoru
-projektikihi QGIS-i metaandmetest. Lookup-väärtusi ega muid projektipõhiseid
-valikuid ei kirjutata plugina koodi sisse.
+Veetoru lisamisel kasutatakse ühise heleda kujundusega EVEL-i torudialoogi:
+**Toru → Haldus ja kvaliteet → EPANET**. Kõrgused, voolusuund ning asukoha ja
+kõrguse täpsus määratakse otse toruskeemil. Dialoog loeb väljade sidemed,
+lookup-valikud ja piirangud aktiivse veetoru projektikihi QGIS-i
+metaandmetest; kasutajale näidatavad eestikeelsed sildid ja ikoonid tulevad
+plugina UI-konfiguratsioonist. Sisestust kiirendavad vaikevalikud lahendatakse
+kuvatava nimetuse, mitte andmebaasi ID järgi. Haldus- ja täpsemate andmete
+väljad on laias vaates kahes veerus ning paigutuvad kitsas vaates automaatselt
+üheks veeruks.
+
+Vasak eelvaade kasutab toru tegelikku geomeetriat ja piiratud ruumipäringuga
+lähedasi sama kihi torusid. `BEGIN_NODE_ID` ning `END_NODE_ID` lahendatakse
+veesõlmede baaskihi kaudu; redigeerimispuhvris loodud sõlm kuvatakse uue ja
+andmepakkujas olemasolev sõlm olemasolevana. Voolu ilmakaar arvutatakse
+geomeetriast ning pöördub koos `FLOWDIRECTION` väärtusega. Pikiprofiil tekib
+ainult piisavate kõrgusandmete korral.
 
 Tehnilised väljad `MSLINK`, `NETWORK_ID`, `NETTYPE_ID`, `BEGIN_NODE_ID`,
 `END_NODE_ID` ja `LENGTH_2D` on dialoogis lukustatud. Dialoogist loobumine

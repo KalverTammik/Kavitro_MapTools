@@ -29,7 +29,7 @@ start_qgis()
 
 
 class IconCatalogTest(unittest.TestCase):
-    def test_catalog_contains_one_existing_png_per_semantic_name(self) -> None:
+    def test_catalog_contains_one_existing_image_per_semantic_name(self) -> None:
         self.assertTrue(ICONS_DIRECTORY.is_dir())
         self.assertTrue(is_available())
         self.assertEqual(set(ICON_FILES), set(available_icon_names()))
@@ -38,15 +38,18 @@ class IconCatalogTest(unittest.TestCase):
             with self.subTest(name=name):
                 path = icon_path(name)
                 self.assertEqual(filename, path.name)
-                self.assertEqual(".png", path.suffix.lower())
+                self.assertIn(path.suffix.lower(), {".png", ".svg"})
                 self.assertTrue(path.is_file())
-                self.assertEqual(
-                    b"\x89PNG\r\n\x1a\n",
-                    path.read_bytes()[:8],
-                )
-                self.assertGreater(path.stat().st_size, 300)
+                if path.suffix.lower() == ".png":
+                    self.assertEqual(
+                        b"\x89PNG\r\n\x1a\n",
+                        path.read_bytes()[:8],
+                    )
+                    self.assertGreater(path.stat().st_size, 300)
+                else:
+                    self.assertGreater(path.stat().st_size, 200)
 
-    def test_png_renders_as_a_visible_multistate_icon(self) -> None:
+    def test_images_render_as_visible_multistate_icons(self) -> None:
         for name in available_icon_names():
             icon = catalog_icon(name)
             self.assertFalse(icon.isNull(), name)

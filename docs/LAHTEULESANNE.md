@@ -186,16 +186,30 @@ Pärast geomeetria ja seoste ettevalmistamist täidetakse vähemalt:
 EVEL-i veekihtide leping eeldab projitseeritud `EPSG:3301` CRS-i, mistõttu on
 tulemus meetrites. Väärtus arvutatakse uuesti ka geomeetria muutmisel.
 
-Seejärel avatakse ühine heleda kujundusega kolme sammuga EVEL-i torudialoog:
-**Toru põhiandmed → Kõrgused ja vool → Haldus ja kvaliteet**. Sama dialoogi kasutatakse vee-
+Seejärel avatakse ühine heleda kujundusega EVEL-i torudialoog:
+**Toru → Haldus ja kvaliteet → EPANET**. Kõrgused, voolusuund ning asukoha ja
+kõrguse täpsus määratakse toruskeemil. Sama dialoogi kasutatakse vee-
 ja isevoolsete torude jaoks, kuid kuvatavad väljad ning valikud sõltuvad
 aktiivsest torukihist.
 
-Dialoog ei dubleeri generaatori andmemudelit. Väljade nimetused, lookup-valikud,
-vaikeväärtused ja piirangud loetakse aktiivse kihi QGIS-i metaandmetest.
+Toruskeem on kontekstitundlik objekti eelvaade: aktiivne toru joonistatakse
+tegeliku geomeetriaga, lähedane võrk jääb visuaalselt taustale, otspunktidel
+kuvatakse sõlme seos ning voolusuunast arvutatakse ilmakaar ja asimuut.
+Pikiprofiil kuvatakse ainult piisavate kõrgusandmete korral. Skeem ei loo
+enda tarbeks dubleerivaid andmevälju ja peab töötama ka sidumata otspunktidega.
+
+Dialoog ei dubleeri generaatori andmemudelit. Väljade sidumine, lookup-valikud,
+vaikeväärtused ja piirangud loetakse aktiivse kihi QGIS-i metaandmetest;
+kasutajale näidatavad eestikeelsed nimetused ning semantilised ikoonid on
+plugina keskses UI-konfiguratsioonis. Toru põhiandmed ja EPANET on
+üheveerulised, haldus- ning täpsemad andmed paigutuvad laias vaates kahte ja
+kitsas vaates automaatselt ühte veergu. Väärtusepõhine väljalaiuse piirang
+säilib paigutuse muutumisel.
 Uue toru tühjade põhiandmete korral rakendatakse võrguliigipõhist
 eelistusprofiili. Veevõrkudes kasutatakse `De`, `PN10` ja ringjäikust
-`Määramata`; isevoolsetes võrkudes `De`, `PN10`, `SN8` ning ümmargust kuju.
+`SN16`; isevoolsetes võrkudes `De`, `PN10`, `SN8` ning ümmargust kuju.
+Kõigi uute torude paiknemine on `Maa-alune`, asukoha täpsus `10 cm` ja
+kõrguse täpsus `2 cm`.
 Täpne otstarve, materjal ja läbimõõt sõltuvad aktiivse kihi `NETWORK_ID` ning
 `NETTYPE_ID` väärtusest ja on kirjeldatud genereeritud vee- ja
 kanalisatsioonikihtide dokumentides. Eelistused lahendatakse lookup-valikute

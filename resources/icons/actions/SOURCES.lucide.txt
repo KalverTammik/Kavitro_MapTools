@@ -1,0 +1,31 @@
+Lucide outline icons used by the duct data-entry concept
+========================================================
+
+Source repository: https://github.com/lucide-icons/lucide
+Retrieved: 2026-08-15
+
+form_pipe.svg = git-branch
+form_shield.svg = shield-check
+form_drop.svg = droplet
+form_target.svg = target
+form_material.svg = box
+form_diameter.svg = circle-slash-2
+form_gauge.svg = gauge
+form_installation.svg = shovel
+form_condition.svg = activity
+form_status.svg = circle-check
+form_tag.svg = tag
+form_owner.svg = building-2
+form_user.svg = user-round
+form_calendar.svg = calendar-days
+form_clock.svg = clock-3
+form_map_pin.svg = map-pin
+form_note.svg = notebook-pen
+form_clipboard.svg = clipboard-check
+form_layers.svg = layers
+form_ruler.svg = ruler
+control_chevron_down.svg = chevron-down
+control_chevron_left.svg = chevron-left
+control_chevron_up.svg = chevron-up
+control_chevron_right.svg = chevron-right
+control_check.svg = check

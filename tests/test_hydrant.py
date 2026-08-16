@@ -25,7 +25,7 @@ from qgis.core import (
 from EVEL_network_tools.layers import HydrantContext, HydrantInspector
 from EVEL_network_tools.map_tools import HydrantConfiguratorController
 from EVEL_network_tools.tests.qgis_test_utils import start_qgis
-from EVEL_network_tools.ui import HydrantDialog
+from EVEL_network_tools.ui import EvelDateEditor, HydrantDialog
 from EVEL_network_tools.topology import (
     HydrantError,
     HydrantPlan,
@@ -334,6 +334,12 @@ class HydrantTest(unittest.TestCase):
                 QDialogButtonBox.Cancel
             ).objectName(),
         )
+        measure_date = dialog.detail_editor.binding("MEASURE_DATE").widget
+        self.assertIsInstance(
+            dialog._date_editors["MEASURE_DATE"],
+            EvelDateEditor,
+        )
+        self.assertFalse(measure_date.calendarPopup())
 
     def test_inspector_recognizes_generated_hydrant_layers(self) -> None:
         self.node_layer.setCustomProperty(

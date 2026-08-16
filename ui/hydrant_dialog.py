@@ -22,6 +22,7 @@ from qgis.core import QgsEditorWidgetSetup, QgsVariantUtils
 from ..layers import HydrantContext
 from ..topology import HydrantPlan, HydrantState
 from .guided_feature_editor import GuidedFeatureEditor
+from .date_editor import EvelDateEditor, evel_date_editor_for_binding
 from .light_style import apply_evel_light_style
 from .icon_catalog import apply_standard_button_icons
 
@@ -251,6 +252,7 @@ class HydrantDialog(QDialog):
             state.node_feature,
             parent=self,
         )
+        self._date_editors: dict[str, EvelDateEditor] = {}
 
         root = QVBoxLayout(self)
         root.setContentsMargins(18, 16, 18, 14)
@@ -456,9 +458,30 @@ class HydrantDialog(QDialog):
             setup_override=override,
         )
         if binding is not None:
-            form.addRow(label, binding.widget)
+            date_control = evel_date_editor_for_binding(
+                binding,
+                form.parentWidget(),
+            )
+            if date_control is not None:
+                self._date_editors[field_name] = date_control
+            form.addRow(label, date_control or binding.widget)
 
     def _validate_and_accept(self) -> None:
+        invalid_dates = [
+            field_name
+            for field_name, control in self._date_editors.items()
+            if control.has_invalid_input()
+        ]
+        if invalid_dates:
+            QMessageBox.warning(
+                self,
+                "Vigane kuupäev",
+                "Sisesta kuupäev kujul pp.kk.aaaa või vali see kalendrist.",
+            )
+            self._date_editors[invalid_dates[0]].setFocus(
+                Qt.OtherFocusReason
+            )
+            return
         missing = []
         for editor in (self.detail_editor, self.node_editor):
             for binding in editor.bindings():

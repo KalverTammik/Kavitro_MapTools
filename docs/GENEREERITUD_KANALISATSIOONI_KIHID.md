@@ -25,10 +25,16 @@ Uue isevoolse toru puhul:
 - `NETWORK_ID` ja olemasolu korral `NETTYPE_ID` tulevad kihi
   vaikeväärtustest;
 - `LENGTH_2D` arvutatakse geomeetriast;
-- avaneb vee- ja isevoolsetele torudele ühine heleda kujundusega kolme sammuga
-  EVEL-i torudialoog **Toru põhiandmed → Kõrgused ja vool → Haldus ja kvaliteet**;
-- väljade aliased, lookup-valikud, vaikeväärtused ja piirangud loetakse
-  aktiivse torukihi QGIS-i metaandmetest;
+- avaneb vee- ja isevoolsetele torudele ühine heleda kujundusega EVEL-i
+  torudialoog **Toru → Haldus ja kvaliteet → EPANET**; kõrgused, voolusuund
+  ning asukoha ja kõrguse täpsus määratakse toruskeemil;
+- toruskeem kasutab tegelikku geomeetriat, näitab lähedast võrku, voolu
+  ilmakaart ning piisavate otsakõrguste korral pikiprofiili; kuni isevoolse
+  toru sõlmed pole loodud, kuvatakse otspunktid ausalt olekuga **Sidumata**;
+- väljade sidemed, lookup-valikud, vaikeväärtused ja piirangud loetakse
+  aktiivse torukihi QGIS-i metaandmetest; kasutajale näidatavad sildid ning
+  ikoonid tulevad plugina UI-konfiguratsioonist ja haldusväljad paigutuvad
+  vastavalt saadaolevale laiusele ühte või kahte veergu;
 - uue toru tühjade põhiandmete korral kasutatakse järgmisi
   võrguliigipõhiseid eelistusi:
 

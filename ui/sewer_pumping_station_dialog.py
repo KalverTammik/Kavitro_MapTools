@@ -65,6 +65,7 @@ from ..topology import (
     SewerPumpingStationState,
 )
 from .light_style import apply_evel_light_style
+from .date_editor import EvelDateEditor
 from .icon_catalog import (
     ICON_ADD,
     ICON_BACK,
@@ -1030,6 +1031,15 @@ class SewerPumpingStationDialog(QDialog):
         self._initial_snapshot = self._snapshot()
 
     def accept(self) -> None:
+        if self.pump_date_control.has_invalid_input():
+            self.tabs.setCurrentIndex(0)
+            QMessageBox.warning(
+                self,
+                "Vigane kuupäev",
+                "Sisesta kuupäev kujul pp.kk.aaaa või vali see kalendrist.",
+            )
+            self.pump_date_control.setFocus(Qt.OtherFocusReason)
+            return
         required_valid = self._validate_required(show_errors=True)
         pumps_valid = self._pumps_valid(show_errors=True)
         if not required_valid or not pumps_valid:
@@ -2046,18 +2056,30 @@ class SewerPumpingStationDialog(QDialog):
         date_layout = QHBoxLayout(date_control)
         date_layout.setContentsMargins(0, 0, 0, 0)
         self.pump_date_known = QCheckBox("Kuupäev teada", date_control)
+        self.pump_date_known.hide()
         self.pump_date_edit = QDateEdit(QDate.currentDate(), date_control)
-        self.pump_date_edit.setCalendarPopup(True)
         self.pump_date_edit.setDisplayFormat("dd.MM.yyyy")
-        date_layout.addWidget(self.pump_date_known)
-        date_layout.addWidget(self.pump_date_edit, 1)
-        self.pump_date_edit.setEnabled(False)
+        self.pump_date_edit.setEnabled(True)
+        self.pump_date_control = EvelDateEditor(
+            self.pump_date_edit,
+            lambda: (
+                self.pump_date_edit.date()
+                if self.pump_date_known.isChecked()
+                else None
+            ),
+            parent=date_control,
+            on_date_selected=lambda _date: self.pump_date_known.setChecked(
+                True
+            ),
+            on_cleared=lambda: self.pump_date_known.setChecked(False),
+        )
+        date_layout.addWidget(self.pump_date_control, 1)
         service_grid.addWidget(
             self._field_block(
                 "Paigalduskuupäev",
                 date_control,
                 self.pump_form_widget,
-                buddy=self.pump_date_known,
+                buddy=self.pump_date_control,
             ),
             0,
             0,
@@ -2169,7 +2191,11 @@ class SewerPumpingStationDialog(QDialog):
             self._pump_selection_changed
         )
         self.pump_date_known.toggled.connect(
-            self.pump_date_edit.setEnabled
+            lambda _checked: self.pump_date_control.sync_value(
+                self.pump_date_edit.date()
+                if self.pump_date_known.isChecked()
+                else None
+            )
         )
         for combo in (
             self.pump_type_combo,
@@ -2328,7 +2354,12 @@ class SewerPumpingStationDialog(QDialog):
                         pump.install_date.day,
                     )
                 )
-            self.pump_date_edit.setEnabled(pump.install_date is not None)
+            self.pump_date_edit.setEnabled(True)
+            self.pump_date_control.sync_value(
+                self.pump_date_edit.date()
+                if pump.install_date is not None
+                else None
+            )
             self.pump_remarks_edit.setPlainText(pump.remarks)
             self.pump_type_error.setVisible(False)
         finally:

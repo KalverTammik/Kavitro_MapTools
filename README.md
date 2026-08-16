@@ -37,15 +37,30 @@ Praegune arendusversioon sisaldab:
   ja sisendi koordinaatsüsteemi, sisestada algus- ja lõpp-punkti ning vajadusel
   täiendavad murdepunktid käsitsi või lõikelaualt;
 - isevoolse kanali, sademeveetoru, ühisvoolse kanali ja drenaaži lisamist
-  ühise heleda kolme sammuga EVEL-i torudialoogiga ning geomeetriast arvutatud
+  ühise heleda EVEL-i torudialoogiga ning geomeetriast arvutatud
   `LENGTH_2D` väärtusega;
 - vee- ja isevoolsete torude sisestamisel ühtset juhitud töövoogu
-  **Toru põhiandmed → Kõrgused ja vool → Haldus ja kvaliteet**, mis loeb väljade nimetused,
-  lookup-valikud, vaikeväärtused ja piirangud aktiivse projektikihi
-  metaandmetest;
+  **Toru → Haldus ja kvaliteet → EPANET**, kus kõrgused, voolusuund ning
+  asukoha ja kõrguse täpsus määratakse otse toruskeemil;
+- toruvormi semantilisi vahelehe- ja väljaikoone, ühtlustatud eestikeelseid
+  UI-silte ning responsiivset haldusvormi, mis kasutab laias vaates kahte ja
+  kitsas vaates ühte veergu; andmetüübist ja valikutest sõltuv väljalaiuse
+  piirang säilib mõlemas paigutuses;
+- tühjade sisestusväärtuste teksti **Pole määratud**, seisundiklasside
+  punasest roheliseni värviskaalat, EVEL-i ühikute kuvamist ning
+  kalendriga kuupäevavalikut;
+- kontekstitundlikku toru eelvaadet, mis joonistab objekti tegeliku geomeetria,
+  piiratud arvu lähedasi torusid ja sõlmi, kuvab otspunktide seose oleku ning
+  arvutab voolusuunale vastava ilmakaare ja asimuudi;
+- tingimuslikku pikiprofiili: 2D-geomeetria korral kasutatakse toru algus- ja
+  lõppkõrgust, tegeliku `LineStringZ` korral murdepunktide Z-väärtusi; puuduvate
+  kõrguste asemel kuvatakse neutraalne teade ning 3D pikkust näidatakse ainult
+  Z-geomeetria olemasolul;
 - kõigi toetatud vee- ja isevoolsete kanalisatsioonivõrkude uue toru
   võrguliigipõhiseid põhiandmete eelistusi; läbimõõdu tüüp on `De`, survevõrgul
-  eelistatakse `PN10` ja isevoolsel torul `SN8`;
+  eelistatakse `PN10` ja `SN16` ning isevoolsel torul `SN8`;
+- käsitsi joonestatud uue toru paiknemise vaikevalikut **Maa-alune** ning
+  mõõdistustäpsuse vaikevalikuid **10 cm** asukohale ja **2 cm** kõrgusele;
 - eelistuste lahendamist lookup-valikute nimetuste järgi ning nende rakendamist
   ainult uue objekti tühjadele väljadele;
 - ringjäikuse klassifikaatori valikuid **Määramata, SN8, SN16**, millest

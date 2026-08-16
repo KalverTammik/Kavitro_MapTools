@@ -32,11 +32,41 @@ ICON_CONFIGURE_NODE = "configure_node"
 ICON_CONNECTION_POINT = "connection_point"
 ICON_COORDINATE_DUCT = "coordinate_duct"
 ICON_COPY = "copy"
+ICON_CONTROL_CHECK = "control_check"
+ICON_CONTROL_CHEVRON_DOWN = "control_chevron_down"
+ICON_CONTROL_CHEVRON_LEFT = "control_chevron_left"
+ICON_CONTROL_CHEVRON_RIGHT = "control_chevron_right"
+ICON_CONTROL_CHEVRON_UP = "control_chevron_up"
 ICON_EDIT_DUCT = "edit_duct"
 ICON_ERROR = "error"
+ICON_DUCT_TAB = "duct_tab"
+ICON_MANAGEMENT_TAB = "management_tab"
+ICON_EPANET_TAB = "epanet_tab"
+ICON_FIELD_PURPOSE = "field_purpose"
+ICON_FIELD_MATERIAL = "field_material"
+ICON_FIELD_DIAMETER = "field_diameter"
+ICON_FIELD_PRESSURE = "field_pressure"
+ICON_FIELD_FIRMNESS = "field_firmness"
+ICON_FIELD_INSTALLATION = "field_installation"
+ICON_FIELD_CONDITION = "field_condition"
+ICON_FIELD_USAGE_STATE = "field_usage_state"
+ICON_FIELD_ASSET = "field_asset"
+ICON_FIELD_OWNER = "field_owner"
+ICON_FIELD_TENANT = "field_tenant"
+ICON_FIELD_DATE = "field_date"
+ICON_FIELD_SERVICE_LIFE = "field_service_life"
+ICON_FIELD_SOURCE = "field_source"
+ICON_FIELD_NOTE = "field_note"
+ICON_FIELD_PERMIT = "field_permit"
+ICON_FIELD_ADDRESS = "field_address"
+ICON_FIELD_LENGTH_3D = "field_length_3d"
+ICON_FIELD_HYDRAULIC_STATUS = "field_hydraulic_status"
 ICON_FOLDER_OPEN = "folder_open"
 ICON_HYDRANT = "hydrant"
 ICON_IMPORT = "import"
+ICON_HEIGHT_ACCURACY = "height_accuracy"
+ICON_LENGTH_2D = "length_2d"
+ICON_LOCATION_ACCURACY = "location_accuracy"
 ICON_NEXT = "next"
 ICON_PASTE = "paste"
 ICON_PREVIEW_HIDE = "preview_hide"
@@ -72,11 +102,41 @@ ICON_FILES = {
     ICON_CONNECTION_POINT: "connection_point.png",
     ICON_COORDINATE_DUCT: "coordinate_duct.png",
     ICON_COPY: "copy.png",
+    ICON_CONTROL_CHECK: "control_check.svg",
+    ICON_CONTROL_CHEVRON_DOWN: "control_chevron_down.svg",
+    ICON_CONTROL_CHEVRON_LEFT: "control_chevron_left.svg",
+    ICON_CONTROL_CHEVRON_RIGHT: "control_chevron_right.svg",
+    ICON_CONTROL_CHEVRON_UP: "control_chevron_up.svg",
     ICON_EDIT_DUCT: "edit_duct.png",
     ICON_ERROR: "error.png",
+    ICON_DUCT_TAB: "form_pipe.svg",
+    ICON_MANAGEMENT_TAB: "form_shield.svg",
+    ICON_EPANET_TAB: "form_drop.svg",
+    ICON_FIELD_PURPOSE: "form_target.svg",
+    ICON_FIELD_MATERIAL: "form_material.svg",
+    ICON_FIELD_DIAMETER: "form_diameter.svg",
+    ICON_FIELD_PRESSURE: "form_gauge.svg",
+    ICON_FIELD_FIRMNESS: "form_condition.svg",
+    ICON_FIELD_INSTALLATION: "form_installation.svg",
+    ICON_FIELD_CONDITION: "form_condition.svg",
+    ICON_FIELD_USAGE_STATE: "form_status.svg",
+    ICON_FIELD_ASSET: "form_tag.svg",
+    ICON_FIELD_OWNER: "form_owner.svg",
+    ICON_FIELD_TENANT: "form_user.svg",
+    ICON_FIELD_DATE: "form_calendar.svg",
+    ICON_FIELD_SERVICE_LIFE: "form_clock.svg",
+    ICON_FIELD_SOURCE: "form_layers.svg",
+    ICON_FIELD_NOTE: "form_note.svg",
+    ICON_FIELD_PERMIT: "form_clipboard.svg",
+    ICON_FIELD_ADDRESS: "form_map_pin.svg",
+    ICON_FIELD_LENGTH_3D: "form_ruler.svg",
+    ICON_FIELD_HYDRAULIC_STATUS: "form_status.svg",
     ICON_FOLDER_OPEN: "folder_open.png",
     ICON_HYDRANT: "hydrant.png",
     ICON_IMPORT: "import.png",
+    ICON_HEIGHT_ACCURACY: "height_accuracy.svg",
+    ICON_LENGTH_2D: "length_2d.svg",
+    ICON_LOCATION_ACCURACY: "location_accuracy.svg",
     ICON_NEXT: "next.png",
     ICON_PASTE: "paste.png",
     ICON_PREVIEW_HIDE: "preview_hide.png",
@@ -154,6 +214,11 @@ def catalog_icon(
             _tinted_pixmap(pixmap, checked_color),
             QIcon.Normal,
             QIcon.On,
+        )
+        icon.addPixmap(
+            _tinted_pixmap(pixmap, checked_color),
+            QIcon.Selected,
+            QIcon.Off,
         )
     return icon
 

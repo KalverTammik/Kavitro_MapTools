@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import unittest
 
-from qgis.PyQt.QtCore import QDateTime, Qt
+from qgis.PyQt.QtCore import QDate, QDateTime, Qt
 from qgis.PyQt.QtTest import QTest
 from qgis.core import (
     QgsDefaultValue,
@@ -34,6 +34,7 @@ from EVEL_network_tools.topology import (
     branch_type_is_compatible,
 )
 from EVEL_network_tools.ui import (
+    EvelDateEditor,
     FacilityConfiguratorDialog,
     ManholeConfiguratorDialog,
     NodeConfigurationProgressDialog,
@@ -602,6 +603,21 @@ class NodeConfigurationTest(unittest.TestCase):
         )
         self.assertTrue(editor.property("evelLightTheme"))
         self.assertIn("#f6f7f8", editor.styleSheet())
+        self.assertIsInstance(
+            editor.renewal_date.date_control,
+            EvelDateEditor,
+        )
+        self.assertIsInstance(
+            editor.wipeout_date.date_control,
+            EvelDateEditor,
+        )
+        self.assertFalse(editor.renewal_date.editor.calendarPopup())
+        self.assertFalse(editor.wipeout_date.editor.calendarPopup())
+        self.assertTrue(editor.renewal_date.enabled_checkbox.isHidden())
+        editor.renewal_date.date_control.set_date(QDate(2023, 4, 5))
+        self.assertTrue(editor.renewal_date.enabled_checkbox.isChecked())
+        editor.renewal_date.date_control.clear_date()
+        self.assertFalse(editor.renewal_date.enabled_checkbox.isChecked())
         editor.material_combo.setCurrentIndex(
             editor.material_combo.findData(364)
         )

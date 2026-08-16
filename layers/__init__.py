@@ -20,6 +20,11 @@ from .duct_catalog import (
     DuctLayerOption,
     DuctWorkflow,
 )
+from .duct_preview import (
+    DuctEndpointPreview,
+    DuctPreviewContext,
+    DuctPreviewContextBuilder,
+)
 from .sewer_manhole import (
     SewerManholeContext,
     SewerManholeContextError,
@@ -55,6 +60,9 @@ __all__ = [
     "DuctLayerCatalog",
     "DuctLayerOption",
     "DuctWorkflow",
+    "DuctEndpointPreview",
+    "DuctPreviewContext",
+    "DuctPreviewContextBuilder",
     "SewerManholeContext",
     "SewerManholeContextError",
     "SewerManholeInspector",

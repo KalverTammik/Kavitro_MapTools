@@ -6,6 +6,15 @@ from qgis.PyQt.QtCore import QSize, QTimer
 from qgis.PyQt.QtGui import QColor, QPalette
 from qgis.PyQt.QtWidgets import QComboBox, QWidget
 
+from .icon_catalog import (
+    ICON_CONTROL_CHECK,
+    ICON_CONTROL_CHEVRON_DOWN,
+    ICON_CONTROL_CHEVRON_RIGHT,
+    ICON_CONTROL_CHEVRON_UP,
+    ICON_FIELD_DATE,
+    icon_path,
+)
+
 
 EVEL_LIGHT_STYLE = """
 QDialog {
@@ -71,15 +80,81 @@ QDialog QComboBox:disabled {
     border: 1px dashed #d1d7de;
 }
 QDialog QComboBox::drop-down {
-    width: 22px;
-    background: #ffffff;
+    width: 27px;
+    background: transparent;
     border: none;
-    border-left: 1px solid #e1e4e8;
     border-top-right-radius: 6px;
     border-bottom-right-radius: 6px;
 }
 QDialog QComboBox::drop-down:hover {
-    background: #f0f4f8;
+    background: #edf6ff;
+}
+QDialog QComboBox::down-arrow {
+    image: url("__EVEL_CHEVRON_DOWN__");
+    width: 11px;
+    height: 11px;
+}
+QDialog QComboBox:on {
+    background: #ffffff;
+    border-color: #2188ff;
+}
+QDialog QSpinBox,
+QDialog QDoubleSpinBox,
+QDialog QDateEdit,
+QDialog QDateTimeEdit {
+    padding-right: 28px;
+}
+QDialog QSpinBox::up-button,
+QDialog QDoubleSpinBox::up-button,
+QDialog QDateEdit::up-button,
+QDialog QDateTimeEdit::up-button {
+    subcontrol-origin: border;
+    subcontrol-position: top right;
+    width: 24px;
+    background: #f8fafc;
+    border: none;
+    border-left: 1px solid #e1e7ec;
+    border-bottom: 1px solid #edf1f4;
+    border-top-right-radius: 5px;
+}
+QDialog QSpinBox::down-button,
+QDialog QDoubleSpinBox::down-button,
+QDialog QDateEdit::down-button,
+QDialog QDateTimeEdit::down-button {
+    subcontrol-origin: border;
+    subcontrol-position: bottom right;
+    width: 24px;
+    background: #f8fafc;
+    border: none;
+    border-left: 1px solid #e1e7ec;
+    border-top: 1px solid #edf1f4;
+    border-bottom-right-radius: 5px;
+}
+QDialog QSpinBox::up-button:hover,
+QDialog QDoubleSpinBox::up-button:hover,
+QDialog QDateEdit::up-button:hover,
+QDialog QDateTimeEdit::up-button:hover,
+QDialog QSpinBox::down-button:hover,
+QDialog QDoubleSpinBox::down-button:hover,
+QDialog QDateEdit::down-button:hover,
+QDialog QDateTimeEdit::down-button:hover {
+    background: #edf6ff;
+}
+QDialog QSpinBox::up-arrow,
+QDialog QDoubleSpinBox::up-arrow,
+QDialog QDateEdit::up-arrow,
+QDialog QDateTimeEdit::up-arrow {
+    image: url("__EVEL_CHEVRON_UP__");
+    width: 10px;
+    height: 10px;
+}
+QDialog QSpinBox::down-arrow,
+QDialog QDoubleSpinBox::down-arrow,
+QDialog QDateEdit::down-arrow,
+QDialog QDateTimeEdit::down-arrow {
+    image: url("__EVEL_CHEVRON_DOWN__");
+    width: 10px;
+    height: 10px;
 }
 QDialog QComboBox QAbstractItemView,
 QDialog QAbstractItemView {
@@ -159,6 +234,7 @@ QDialog QCheckBox::indicator {
 QDialog QCheckBox::indicator:checked {
     background: #0078d4;
     border-color: #005a9e;
+    image: url("__EVEL_CHECK__");
 }
 QDialog QGroupBox {
     background: #ffffff;
@@ -176,6 +252,18 @@ QDialog QGroupBox::title {
     font-weight: 600;
     background: #f6f7f8;
     border-radius: 4px;
+}
+QDialog QGroupBox::indicator {
+    width: 16px;
+    height: 16px;
+    background: #ffffff;
+    border: 1px solid #d0d7de;
+    border-radius: 3px;
+}
+QDialog QGroupBox::indicator:checked {
+    background: #0078d4;
+    border-color: #005a9e;
+    image: url("__EVEL_CHECK__");
 }
 QDialog QTabWidget::pane {
     background: #ffffff;
@@ -262,21 +350,39 @@ QDialog QWidget#tabContent {
     color: #24292e;
 }
 QDialog QScrollBar:vertical {
-    background: transparent;
-    width: 10px;
-    margin: 1px;
+    background: #f4f7f9;
+    width: 9px;
+    margin: 2px 1px;
+    border-radius: 4px;
 }
 QDialog QScrollBar::handle:vertical {
-    background: rgba(15, 118, 110, 105);
-    border: 1px solid rgba(15, 118, 110, 60);
+    background: #a8b7c4;
+    border: none;
     border-radius: 4px;
-    min-height: 24px;
+    min-height: 28px;
 }
 QDialog QScrollBar::handle:vertical:hover {
-    background: rgba(15, 118, 110, 150);
+    background: #7f95a8;
+}
+QDialog QScrollBar:horizontal {
+    background: #f4f7f9;
+    height: 9px;
+    margin: 1px 2px;
+    border-radius: 4px;
+}
+QDialog QScrollBar::handle:horizontal {
+    background: #a8b7c4;
+    border: none;
+    border-radius: 4px;
+    min-width: 28px;
+}
+QDialog QScrollBar::handle:horizontal:hover {
+    background: #7f95a8;
 }
 QDialog QScrollBar::add-line,
-QDialog QScrollBar::sub-line {
+QDialog QScrollBar::sub-line,
+QDialog QScrollBar::add-page,
+QDialog QScrollBar::sub-page {
     width: 0;
     height: 0;
     background: transparent;
@@ -369,6 +475,33 @@ QDialog#evelDuctEditorDialog QLabel#ductContext,
 QDialog#evelDuctEditorDialog QLabel#ductStepHint {
     color: #57606a;
 }
+QDialog#evelDuctEditorDialog QWidget#ductSectionHeader,
+QDialog#evelDuctEditorDialog QWidget#ductFieldRow,
+QDialog#evelDuctEditorDialog QWidget#responsiveFieldGrid {
+    background: transparent;
+}
+QDialog#evelDuctEditorDialog QLabel#ductSectionIcon,
+QDialog#evelDuctEditorDialog QLabel#ductFieldIcon {
+    background: transparent;
+}
+QDialog#evelDuctEditorDialog QFrame#ductInfoCard {
+    background: #f4f8ff;
+    border: 1px solid #bdd7f4;
+    border-radius: 8px;
+}
+QDialog#evelDuctEditorDialog QLabel#ductInfoIcon {
+    color: #0969da;
+    font-size: 15px;
+    font-weight: 700;
+}
+QDialog#evelDuctEditorDialog QLabel#ductInfoText {
+    color: #435b78;
+    font-size: 11px;
+}
+QDialog#evelDuctEditorDialog QLabel#ductFieldUnit {
+    color: #667085;
+    font-size: 11px;
+}
 QDialog#evelDuctEditorDialog QLabel#ductLayerBadge {
     background: #edf6ff;
     color: #005a9e;
@@ -383,14 +516,38 @@ QDialog#evelDuctEditorDialog QFrame#ductEditorFrame {
     border: 1px solid #e1e4e8;
     border-radius: 10px;
 }
-QDialog#evelDuctEditorDialog QFrame#ductTechnicalCard {
-    background: #f9fafb;
-    border: 1px solid #d0d7de;
-    border-radius: 8px;
-}
-QDialog#evelDuctEditorDialog QLabel#ductTechnicalValue {
-    color: #111416;
+QDialog#evelDuctEditorDialog QPushButton#ductEndpointButton {
+    background: rgba(255, 255, 255, 235);
+    color: #005a9e;
+    border: 1px solid #9db8cc;
+    border-radius: 7px;
+    padding: 2px 5px;
+    font-size: 11px;
     font-weight: 600;
+}
+QDialog#evelDuctEditorDialog QPushButton#ductEndpointButton:hover {
+    background: #edf6ff;
+    border-color: #0078d4;
+}
+QDialog#evelDuctEditorDialog QPushButton#ductEndpointButton:focus {
+    border: 2px solid #0078d4;
+}
+QDialog#evelDuctEditorDialog QPushButton#ductEndpointButton:disabled {
+    background: rgba(246, 247, 248, 235);
+    color: #57606a;
+    border-color: #d0d7de;
+}
+QDialog#evelDuctEditorDialog QPushButton#ductFlowDirectionButton {
+    background: rgba(255, 255, 255, 240);
+    color: #005a9e;
+    border: 1px solid #9db8cc;
+    border-radius: 7px;
+    padding: 3px 8px;
+    font-weight: 600;
+}
+QDialog#evelDuctEditorDialog QPushButton#ductFlowDirectionButton:hover {
+    background: #edf6ff;
+    border-color: #0078d4;
 }
 QDialog#evelDuctEditorDialog QLabel#ductStepHeading {
     color: #111416;
@@ -400,6 +557,54 @@ QDialog#evelDuctEditorDialog QLabel#ductStepHeading {
 QDialog#evelDuctEditorDialog QLabel#fieldLabel {
     color: #111416;
     font-weight: 600;
+}
+QDialog#evelDuctEditorDialog QGroupBox {
+    background: #ffffff;
+    border: 1px solid #dce4ea;
+    border-radius: 8px;
+    margin-top: 12px;
+    padding-top: 6px;
+}
+QDialog#evelDuctEditorDialog QGroupBox::title {
+    color: #334155;
+    subcontrol-origin: margin;
+    subcontrol-position: top left;
+    left: 10px;
+    padding: 1px 5px;
+    font-weight: 600;
+    background: #ffffff;
+}
+QDialog#evelDuctEditorDialog QGroupBox#ductAdvancedGroup::indicator {
+    width: 16px;
+    height: 16px;
+    background: transparent;
+    border: none;
+}
+QDialog#evelDuctEditorDialog QGroupBox#ductAdvancedGroup::indicator:unchecked {
+    image: url("__EVEL_CHEVRON_RIGHT__");
+}
+QDialog#evelDuctEditorDialog QGroupBox#ductAdvancedGroup::indicator:checked {
+    image: url("__EVEL_CHEVRON_DOWN__");
+}
+QDialog#evelDuctEditorDialog QDateEdit::drop-down,
+QDialog#evelDuctEditorDialog QDateTimeEdit::drop-down {
+    subcontrol-origin: border;
+    subcontrol-position: top right;
+    width: 28px;
+    background: transparent;
+    border: none;
+    border-top-right-radius: 6px;
+    border-bottom-right-radius: 6px;
+}
+QDialog#evelDuctEditorDialog QDateEdit::drop-down:hover,
+QDialog#evelDuctEditorDialog QDateTimeEdit::drop-down:hover {
+    background: #edf6ff;
+}
+QDialog#evelDuctEditorDialog QDateEdit::down-arrow,
+QDialog#evelDuctEditorDialog QDateTimeEdit::down-arrow {
+    image: url("__EVEL_CALENDAR__");
+    width: 14px;
+    height: 14px;
 }
 QDialog#evelDuctEditorDialog QLabel#ductErrorLabel {
     background: #fff1f1;
@@ -533,23 +738,38 @@ QAbstractItemView {
     background: #ffffff;
     alternate-background-color: #f6f8fa;
     color: #24292e;
-    border: 1px solid #2188ff;
-    selection-background-color: #0078d4;
-    selection-color: #ffffff;
+    border: 1px solid #9fc5ea;
+    border-radius: 5px;
+    selection-background-color: #e8f3ff;
+    selection-color: #075a9c;
     outline: 0;
 }
-QAbstractItemView::item {
-    min-height: 22px;
-    padding: 3px 7px;
+QAbstractItemView::item,
+QListView::item {
+    min-height: 25px;
+    padding: 3px 9px;
 }
 QScrollBar:vertical {
-    background: transparent;
-    width: 10px;
+    background: #f4f7f9;
+    width: 9px;
+    margin: 2px 1px;
+    border-radius: 4px;
 }
 QScrollBar::handle:vertical {
-    background: rgba(15, 118, 110, 105);
+    background: #a8b7c4;
     border-radius: 4px;
-    min-height: 24px;
+    min-height: 28px;
+}
+QScrollBar::handle:vertical:hover {
+    background: #7f95a8;
+}
+QScrollBar::add-line,
+QScrollBar::sub-line,
+QScrollBar::add-page,
+QScrollBar::sub-page {
+    width: 0;
+    height: 0;
+    background: transparent;
 }
 """
 
@@ -642,6 +862,23 @@ QMenu#EVELStatusToolsMenu::separator {
 """
 
 
+STYLE_ICON_TOKENS = {
+    "__EVEL_CALENDAR__": ICON_FIELD_DATE,
+    "__EVEL_CHECK__": ICON_CONTROL_CHECK,
+    "__EVEL_CHEVRON_DOWN__": ICON_CONTROL_CHEVRON_DOWN,
+    "__EVEL_CHEVRON_RIGHT__": ICON_CONTROL_CHEVRON_RIGHT,
+    "__EVEL_CHEVRON_UP__": ICON_CONTROL_CHEVRON_UP,
+}
+
+
+def _resolve_style_icons(style: str) -> str:
+    resolved = style
+    for token, icon_name in STYLE_ICON_TOKENS.items():
+        path = icon_path(icon_name).resolve().as_posix()
+        resolved = resolved.replace(token, path)
+    return resolved
+
+
 def _light_palette(widget) -> QPalette:
     palette = QPalette(widget.palette())
     roles = {
@@ -688,6 +925,23 @@ def _style_combo_popups(widget) -> None:
             try:
                 view.setPalette(_light_palette(view))
                 view.setStyleSheet(COMBO_POPUP_LIGHT_STYLE)
+                view.setMinimumWidth(max(combo.width(), 1))
+                set_uniform = getattr(view, "setUniformItemSizes", None)
+                if callable(set_uniform):
+                    set_uniform(True)
+                set_spacing = getattr(view, "setSpacing", None)
+                if callable(set_spacing):
+                    set_spacing(1)
+                set_grid_size = getattr(view, "setGridSize", None)
+                if callable(set_grid_size):
+                    # QGIS ValueMap editors use a QListView whose native
+                    # delegate can ignore QSS min-height in a combo popup.
+                    # A fixed row grid keeps the popup comfortably readable
+                    # without replacing QGIS' own item delegate.
+                    set_grid_size(QSize(0, 28))
+                popup = view.window()
+                if popup is not None:
+                    popup.setPalette(_light_palette(popup))
             except RuntimeError:
                 continue
 
@@ -733,7 +987,7 @@ def apply_evel_light_style(
         style += HYDRANT_EDITOR_LIGHT_STYLE
     if diagnostics:
         style += DIAGNOSTICS_LIGHT_STYLE
-    widget.setStyleSheet(style)
+    widget.setStyleSheet(_resolve_style_icons(style))
     QTimer.singleShot(0, lambda root=widget: _finish_light_style(root))
 
 

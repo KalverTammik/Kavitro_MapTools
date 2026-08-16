@@ -22,12 +22,18 @@ from .sewer_pumping_station_dialog import SewerPumpingStationDialog
 from .duct_editor_dialog import (
     DuctEditorDialog,
     DuctEditorProfile,
+    DuctPreviewWidget,
     DuctSchematicWidget,
 )
 from .guided_feature_editor import (
     GuidedFeatureEditor,
     GuidedFeatureEditorError,
     GuidedFieldBinding,
+)
+from .date_editor import (
+    EvelCalendarPopup,
+    EvelDateEditor,
+    evel_date_editor_for_binding,
 )
 from .evel_import_dialog import EvelImportDialog
 from .evel_clear_dialog import EvelClearDataDialog
@@ -52,10 +58,14 @@ __all__ = [
     "SewerPumpingStationDialog",
     "DuctEditorDialog",
     "DuctEditorProfile",
+    "DuctPreviewWidget",
     "DuctSchematicWidget",
     "GuidedFeatureEditor",
     "GuidedFeatureEditorError",
     "GuidedFieldBinding",
+    "EvelCalendarPopup",
+    "EvelDateEditor",
+    "evel_date_editor_for_binding",
     "EvelImportDialog",
     "EvelClearDataDialog",
     "HydrantDialog",

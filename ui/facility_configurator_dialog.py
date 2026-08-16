@@ -18,6 +18,7 @@ from qgis.PyQt.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QMessageBox,
     QPushButton,
     QTabWidget,
     QVBoxLayout,
@@ -31,6 +32,7 @@ from ..layers import (
 )
 from ..topology import FacilityConfiguration
 from .light_style import apply_evel_light_style
+from .date_editor import EvelDateEditor
 from .icon_catalog import (
     ICON_CONFIGURE,
     apply_standard_button_icons,
@@ -47,16 +49,37 @@ class _OptionalDateTimeWidget(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         self.enabled_checkbox = QCheckBox("Määratud", self)
         self.editor = QDateTimeEdit(self)
-        self.editor.setCalendarPopup(True)
         self.editor.setDisplayFormat("dd.MM.yyyy")
         self.editor.setDateTime(
             QDateTime(value) if value is not None else QDateTime.currentDateTime()
         )
         self.enabled_checkbox.setChecked(value is not None)
-        self.editor.setEnabled(value is not None)
-        self.enabled_checkbox.toggled.connect(self.editor.setEnabled)
-        layout.addWidget(self.enabled_checkbox)
-        layout.addWidget(self.editor, 1)
+        # Retain the state flag for the existing data contract, while the
+        # EVEL date editor itself represents null without a second control.
+        self.enabled_checkbox.hide()
+        self.editor.setEnabled(True)
+        self.date_control = EvelDateEditor(
+            self.editor,
+            self._editor_value,
+            parent=self,
+            on_date_selected=lambda _date: self.enabled_checkbox.setChecked(
+                True
+            ),
+            on_cleared=lambda: self.enabled_checkbox.setChecked(False),
+        )
+        self.enabled_checkbox.toggled.connect(self._enabled_changed)
+        layout.addWidget(self.date_control, 1)
+
+    def _editor_value(self):
+        if not self.enabled_checkbox.isChecked():
+            return None
+        return self.editor.dateTime()
+
+    def _enabled_changed(self, enabled: bool) -> None:
+        self.date_control.sync_value(self._editor_value())
+
+    def has_invalid_input(self) -> bool:
+        return self.date_control.has_invalid_input()
 
     def value(self) -> datetime | None:
         if not self.enabled_checkbox.isChecked():
@@ -207,9 +230,28 @@ class FacilityConfiguratorDialog(QDialog):
         buttons.button(QDialogButtonBox.Save).setText("Salvesta valikud")
         buttons.button(QDialogButtonBox.Cancel).setText("Loobu")
         apply_standard_button_icons(buttons)
-        buttons.accepted.connect(self.accept)
+        buttons.accepted.connect(self._validate_and_accept)
         buttons.rejected.connect(self.reject)
         root.addWidget(buttons)
+
+    def _validate_and_accept(self) -> None:
+        invalid = next(
+            (
+                editor
+                for editor in (self.renewal_date, self.wipeout_date)
+                if editor.has_invalid_input()
+            ),
+            None,
+        )
+        if invalid is not None:
+            QMessageBox.warning(
+                self,
+                "Vigane kuupäev",
+                "Sisesta kuupäev kujul pp.kk.aaaa või vali see kalendrist.",
+            )
+            invalid.date_control.setFocus(Qt.OtherFocusReason)
+            return
+        self.accept()
 
     def configuration(self) -> FacilityConfiguration:
         return FacilityConfiguration(
