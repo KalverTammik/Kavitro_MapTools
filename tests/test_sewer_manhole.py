@@ -7,7 +7,12 @@ import unittest
 
 from qgis.PyQt.QtCore import QDate, Qt
 from qgis.PyQt.QtTest import QTest
-from qgis.PyQt.QtWidgets import QApplication, QTableWidget
+from qgis.PyQt.QtWidgets import (
+    QApplication,
+    QGraphicsView,
+    QTableWidget,
+    QToolButton,
+)
 from qgis.core import (
     QgsDefaultValue,
     QgsFeature,
@@ -248,6 +253,14 @@ class SewerManholeTest(unittest.TestCase):
         )
         self.assertTrue(dialog.property("evelLightTheme"))
         self.assertIn("#f6f7f8", dialog.styleSheet())
+        self.assertTrue(dialog.detail_tabs.property("evelWorkflowTabs"))
+        self.assertEqual("01  Kaev", dialog.detail_tabs.tabText(0))
+        self.assertEqual("02  Kaas", dialog.detail_tabs.tabText(1))
+        self.assertEqual(
+            "03  Põlv / ühenduskoht",
+            dialog.detail_tabs.tabText(2),
+        )
+        self.assertFalse(dialog.detail_tabs.tabIcon(0).isNull())
         self.assertEqual(2, dialog.table.rowCount())
         reference = dialog.clock.reference_outlet()
         self.assertIsNotNone(reference)
@@ -530,6 +543,7 @@ class SewerManholeTest(unittest.TestCase):
             state,
             self.pumping_context.options,
         )
+        self.assertIsInstance(dialog.preview, QGraphicsView)
         self.assertTrue(dialog.property("evelLightTheme"))
         self.assertIn("#f6f7f8", dialog.styleSheet())
         self.assertNotIn("#0a1220", dialog.styleSheet())
@@ -541,8 +555,17 @@ class SewerManholeTest(unittest.TestCase):
         dialog.pump_date_control.clear_date()
         self.assertFalse(dialog.pump_date_known.isChecked())
         self.assertEqual(4, dialog.tabs.count())
-        self.assertIn("Pumbad", dialog.tabs.tabText(0))
-        self.assertIn("\n", dialog.tabs.tabText(0))
+        self.assertTrue(dialog.tabs.property("evelWorkflowTabs"))
+        self.assertEqual("01  Pumbad", dialog.tabs.tabText(0))
+        self.assertEqual("02  Juhtimine", dialog.tabs.tabText(1))
+        self.assertEqual(
+            "03  Rajatis ja asukoht",
+            dialog.tabs.tabText(2),
+        )
+        self.assertEqual("04  Torud", dialog.tabs.tabText(3))
+        self.assertNotIn("\n", dialog.tabs.tabText(0))
+        self.assertFalse(dialog.tabs.tabIcon(0).isNull())
+        self.assertIn("Lisamata", dialog.tabs.tabToolTip(0))
         self.assertTrue(dialog.next_button.isEnabled())
         self.assertIn("Juhtimine", dialog.next_button.text())
         dialog.next_button.click()
@@ -569,7 +592,16 @@ class SewerManholeTest(unittest.TestCase):
         dialog.pump_add_button.click()
         self.assertEqual(1, dialog.pump_list.count())
         self.assertEqual(1, dialog.preview.pump_count)
-        self.assertIn("Kontrolli", dialog.tabs.tabText(0))
+        dialog.preview._request_add_pump()
+        QApplication.processEvents()
+        self.assertEqual(2, dialog.pump_list.count())
+        self.assertEqual(2, dialog.preview.pump_count)
+        dialog.preview._activate_pump(0)
+        self.assertEqual(0, dialog.pump_list.currentRow())
+        dialog.pump_list.setCurrentRow(1)
+        dialog.pump_remove_button.click()
+        self.assertEqual(1, dialog.preview.pump_count)
+        self.assertIn("Kontrolli", dialog.tabs.tabToolTip(0))
         dialog.next_button.click()
         self.assertEqual(0, dialog.tabs.currentIndex())
         self.assertFalse(dialog.pump_type_error.isHidden())
@@ -585,6 +617,23 @@ class SewerManholeTest(unittest.TestCase):
         dialog.pump_productivity_edit.setText("99")
         dialog.pump_productivity_edit.setFocus(Qt.OtherFocusReason)
         QApplication.processEvents()
+        spin = dialog.productivity_spin
+        line_edit = spin.lineEdit()
+        clear_button = line_edit.findChild(QToolButton)
+        self.assertIsNotNone(clear_button)
+        self.assertEqual(18, clear_button.width())
+        self.assertEqual(18, clear_button.height())
+        clear_center_y = (
+            line_edit.y()
+            + clear_button.y()
+            + clear_button.height() // 2
+        )
+        self.assertEqual(spin.height() // 2, clear_center_y)
+        clear_right = (
+            line_edit.x() + clear_button.x() + clear_button.width()
+        )
+        spinner_left = spin.width() - 25
+        self.assertLessEqual(spinner_left - clear_right, 10)
         QTest.keyClicks(dialog.pump_productivity_edit, "8,5")
         self.assertEqual("8,5", dialog.pump_productivity_edit.text())
         dialog.pump_head_edit.setText("12")
@@ -601,9 +650,9 @@ class SewerManholeTest(unittest.TestCase):
         )
         dialog.pump_date_known.setChecked(True)
         dialog.pump_date_edit.setDate(QDate(2024, 5, 17))
-        self.assertIn("1 pump", dialog.tabs.tabText(0))
+        self.assertIn("1 pump", dialog.tabs.tabToolTip(0))
         dialog.name_edit.setText("RP-1")
-        self.assertIn("Valmis", dialog.tabs.tabText(2))
+        self.assertIn("Valmis", dialog.tabs.tabToolTip(2))
         self.assertTrue(dialog.next_button.isEnabled())
         self.assertEqual("RP-1", dialog.preview.facility_name)
         dialog.productivity_spin.setValue(12.5)
@@ -732,17 +781,17 @@ class SewerManholeTest(unittest.TestCase):
 
         self.assertIsNone(dialog.type_combo.currentData())
         self.assertTrue(dialog.next_button.isEnabled())
-        self.assertIn("3/4", dialog.tabs.tabText(2))
+        self.assertIn("3/4", dialog.tabs.tabToolTip(2))
         dialog.type_combo.setCurrentIndex(1)
         self.assertEqual(479, dialog.type_combo.currentData())
-        self.assertIn("3/4", dialog.tabs.tabText(2))
+        self.assertIn("3/4", dialog.tabs.tabToolTip(2))
         dialog.next_button.click()
         self.assertEqual(2, dialog.tabs.currentIndex())
         self.assertFalse(dialog.required_errors["type"].isHidden())
         dialog.type_combo.setCurrentIndex(2)
         self.assertEqual(480, dialog.type_combo.currentData())
         self.assertTrue(dialog.next_button.isEnabled())
-        self.assertIn("Valmis", dialog.tabs.tabText(2))
+        self.assertIn("Valmis", dialog.tabs.tabToolTip(2))
         self.assertFalse(hasattr(dialog, "address_edit"))
         self.assertEqual(12345, dialog.plan().configuration.address_id)
         dialog.deleteLater()
@@ -796,10 +845,10 @@ class SewerManholeTest(unittest.TestCase):
         dialog.name_edit.setText("RP-1")
         dialog.parcel_edit.setText("vale tunnus")
         self.assertFalse(dialog.parcel_warning.isHidden())
-        self.assertIn("Kontrolli asukohta", dialog.tabs.tabText(2))
+        self.assertIn("Kontrolli asukohta", dialog.tabs.tabToolTip(2))
         dialog.parcel_edit.setText("78401:101:1234")
         self.assertTrue(dialog.parcel_warning.isHidden())
-        self.assertIn("Valmis", dialog.tabs.tabText(2))
+        self.assertIn("Valmis", dialog.tabs.tabToolTip(2))
 
         dialog.set_busy(True, "Kirjutan pumpla andmeid…", 60)
         self.assertTrue(dialog._busy)

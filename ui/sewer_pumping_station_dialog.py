@@ -10,7 +10,6 @@ from qgis.PyQt.QtCore import (
     QPointF,
     QRegularExpression,
     QRectF,
-    QSize,
     Qt,
     QTimer,
     pyqtSignal,
@@ -35,6 +34,9 @@ from qgis.PyQt.QtWidgets import (
     QDialog,
     QDoubleSpinBox,
     QFrame,
+    QGraphicsItem,
+    QGraphicsScene,
+    QGraphicsView,
     QGridLayout,
     QHeaderView,
     QHBoxLayout,
@@ -51,7 +53,6 @@ from qgis.PyQt.QtWidgets import (
     QSplitter,
     QTableWidget,
     QTableWidgetItem,
-    QTabBar,
     QTabWidget,
     QVBoxLayout,
     QWidget,
@@ -64,44 +65,25 @@ from ..topology import (
     SewerPumpingStationPlan,
     SewerPumpingStationState,
 )
-from .light_style import apply_evel_light_style
+from .light_style import apply_evel_light_style, configure_evel_tabs
 from .date_editor import EvelDateEditor
 from .icon_catalog import (
     ICON_ADD,
     ICON_BACK,
     ICON_CANCEL,
+    ICON_CONFIGURE,
     ICON_COPY,
+    ICON_DUCT_TAB,
+    ICON_FIELD_ADDRESS,
     ICON_NEXT,
     ICON_PREVIEW_HIDE,
     ICON_PREVIEW_SHOW,
+    ICON_PUMPING_STATION,
     ICON_REMOVE,
     ICON_SAVE,
+    catalog_icon,
     set_catalog_icon,
 )
-
-
-class PumpStationStepTabBar(QTabBar):
-    """Give each workflow step exactly one quarter of the available width."""
-
-    def _available_width(self) -> int:
-        parent = self.parentWidget()
-        return max(parent.width() if parent is not None else self.width(), 1)
-
-    def tabSizeHint(self, index: int) -> QSize:  # noqa: N802
-        hint = super().tabSizeHint(index)
-        if self.count():
-            hint.setWidth(max(self._available_width() // self.count(), 1))
-        hint.setHeight(max(hint.height(), 58))
-        return hint
-
-    def sizeHint(self) -> QSize:  # noqa: N802
-        hint = super().sizeHint()
-        hint.setWidth(self._available_width())
-        return hint
-
-    def resizeEvent(self, event) -> None:  # noqa: N802
-        super().resizeEvent(event)
-        self.updateGeometry()
 
 
 class NullableDoubleSpinBox(QDoubleSpinBox):
@@ -223,10 +205,73 @@ class OptionalNumberLineEdit(QLineEdit):
         return float(text.replace(",", "."))
 
 
-class SewerPumpingStationPreviewWidget(QWidget):
-    """Game-like interactive cutaway illustration of a pumping station."""
+class _PumpStationPreviewHotspot(QGraphicsItem):
+    """Transparent scene item providing a generous, scalable hit target."""
+
+    def __init__(
+        self,
+        preview,
+        rect: QRectF,
+        section: int,
+        callback,
+        tooltip: str,
+        *,
+        z_value: float = 10.0,
+    ) -> None:
+        super().__init__()
+        self.preview = preview
+        self.section = section
+        self.callback = callback
+        self._rect = QRectF(0, 0, rect.width(), rect.height())
+        self.setPos(rect.topLeft())
+        self.setZValue(z_value)
+        self.setAcceptHoverEvents(True)
+        self.setCursor(Qt.PointingHandCursor)
+        self.setToolTip(tooltip)
+
+    def boundingRect(self) -> QRectF:  # noqa: N802
+        return self._rect
+
+    def paint(self, _painter, _option, _widget=None) -> None:
+        return
+
+    def hoverEnterEvent(self, event) -> None:  # noqa: N802
+        self.preview._set_hovered_section(self.section)
+        super().hoverEnterEvent(event)
+
+    def hoverLeaveEvent(self, event) -> None:  # noqa: N802
+        self.preview._set_hovered_section(-1)
+        super().hoverLeaveEvent(event)
+
+    def mousePressEvent(self, event) -> None:  # noqa: N802
+        if event.button() == Qt.LeftButton:
+            self.callback()
+            event.accept()
+            return
+        super().mousePressEvent(event)
+
+
+class _PumpStationPreviewArtwork(QGraphicsItem):
+    """Single vector artwork item; interactions live in separate items."""
+
+    def __init__(self, preview) -> None:
+        super().__init__()
+        self.preview = preview
+        self.setZValue(0)
+
+    def boundingRect(self) -> QRectF:  # noqa: N802
+        return QRectF(self.preview.SCENE_RECT)
+
+    def paint(self, painter, _option, _widget=None) -> None:
+        self.preview._paint_diagram(painter)
+
+
+class SewerPumpingStationPreviewWidget(QGraphicsView):
+    """Scalable, interactive 2.5D overview of a pumping station."""
 
     sectionSelected = pyqtSignal(int)
+    pumpSelected = pyqtSignal(int)
+    addPumpRequested = pyqtSignal()
 
     SECTION_PUMPS = 0
     SECTION_CONTROL = 1
@@ -238,6 +283,7 @@ class SewerPumpingStationPreviewWidget(QWidget):
         "Rajatis ja asukoht",
         "Torud",
     )
+    SCENE_RECT = QRectF(0, 0, 440, 570)
 
     def __init__(
         self,
@@ -253,6 +299,7 @@ class SewerPumpingStationPreviewWidget(QWidget):
         self.port_count = len(ports)
         self.selected_section = self.SECTION_PUMPS
         self.hovered_section = -1
+        self.selected_pump = -1
         self.facility_name = "Uus pumpla"
         self.type_label = "Liik valimata"
         self.role_label = "Roll valimata"
@@ -263,27 +310,40 @@ class SewerPumpingStationPreviewWidget(QWidget):
         self.pressure: float | None = None
         self.power: float | None = None
         self.pump_count = 0
-        self._origin = QPointF()
-        self._scale = 1.0
-        self._hotspots: dict[int, tuple[QRectF, ...]] = {}
+        self.pump_labels: tuple[str, ...] = ()
+        self.pump_ready: tuple[bool, ...] = ()
         self._overlay_button: QPushButton | None = None
+        self._graphics_scene = QGraphicsScene(self)
+        self._graphics_scene.setSceneRect(self.SCENE_RECT)
+        self.setScene(self._graphics_scene)
+        self._artwork: _PumpStationPreviewArtwork | None = None
+        self._section_rects: dict[int, tuple[QRectF, ...]] = {}
+
         self.setMinimumSize(340, 440)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        self.setMouseTracking(True)
+        self.setFrameShape(QFrame.NoFrame)
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.setAlignment(Qt.AlignCenter)
+        self.setBackgroundBrush(QColor("#f6f7f8"))
+        self.setRenderHints(
+            QPainter.Antialiasing
+            | QPainter.TextAntialiasing
+            | QPainter.SmoothPixmapTransform
+        )
+        self.setTransformationAnchor(QGraphicsView.AnchorViewCenter)
+        self.setResizeAnchor(QGraphicsView.AnchorViewCenter)
         self.setFocusPolicy(Qt.NoFocus)
-        self.setCursor(Qt.ArrowCursor)
         self.setAccessibleName(
             "Interaktiivne kanalisatsioonipumpla läbilõikeskeem"
         )
-        self.setAccessibleDescription(
-            "Illustratiivne skeem. Töövoos liikumiseks kasuta ka "
-            "skeemi kõrval olevat neljaosalist sammuriba."
-        )
+        self._rebuild_scene()
         self._update_description()
 
     def set_overlay_button(self, button: QPushButton) -> None:
         self._overlay_button = button
         button.adjustSize()
+        button.raise_()
         self._position_overlay_button()
 
     def _position_overlay_button(self) -> None:
@@ -292,22 +352,44 @@ class SewerPumpingStationPreviewWidget(QWidget):
             return
         size = button.sizeHint()
         width = min(max(size.width(), 105), 125)
-        height = size.height()
-        right = self._origin.x() + 420.0 * self._scale
-        top = self._origin.y()
         button.setGeometry(
-            round(right - width - 12),
-            round(top + 12),
+            max(self.width() - width - 15, 8),
+            12,
             width,
-            height,
+            size.height(),
         )
+        button.raise_()
+
+    def resizeEvent(self, event) -> None:  # noqa: N802
+        super().resizeEvent(event)
+        self._fit_scene()
+        self._position_overlay_button()
+
+    def showEvent(self, event) -> None:  # noqa: N802
+        super().showEvent(event)
+        self._fit_scene()
+
+    def _fit_scene(self) -> None:
+        if self.viewport().width() <= 1 or self.viewport().height() <= 1:
+            return
+        self.resetTransform()
+        self.fitInView(self.SCENE_RECT, Qt.KeepAspectRatio)
 
     def set_selected_section(self, index: int) -> None:
         if index < 0 or index >= len(self.SECTION_NAMES):
             return
         self.selected_section = index
         self._update_description()
-        self.update()
+        if self._artwork is not None:
+            self._artwork.update()
+
+    def set_selected_pump(self, index: int) -> None:
+        bounded = index if 0 <= index < self.pump_count else -1
+        if bounded == self.selected_pump:
+            return
+        self.selected_pump = bounded
+        if self._artwork is not None:
+            self._artwork.update()
 
     def set_configuration(
         self,
@@ -322,6 +404,9 @@ class SewerPumpingStationPreviewWidget(QWidget):
         pressure: float | None,
         power: float | None,
         pump_count: int,
+        pump_labels: tuple[str, ...] = (),
+        pump_ready: tuple[bool, ...] = (),
+        selected_pump: int | None = None,
     ) -> None:
         self.facility_name = facility_name or "Uus pumpla"
         self.type_label = type_label or "Liik valimata"
@@ -333,8 +418,18 @@ class SewerPumpingStationPreviewWidget(QWidget):
         self.pressure = pressure
         self.power = power
         self.pump_count = max(int(pump_count), 0)
+        self.pump_labels = tuple(pump_labels)
+        self.pump_ready = tuple(bool(value) for value in pump_ready)
+        if selected_pump is not None:
+            self.selected_pump = (
+                selected_pump
+                if 0 <= selected_pump < self.pump_count
+                else -1
+            )
+        elif self.selected_pump >= self.pump_count:
+            self.selected_pump = -1
         self._update_description()
-        self.update()
+        self._rebuild_scene()
 
     def _flow_counts(self) -> tuple[int, int, int]:
         incoming = sum(port.is_outgoing is False for port in self.ports)
@@ -364,13 +459,13 @@ class SewerPumpingStationPreviewWidget(QWidget):
         if self.selected_section == self.SECTION_PUMPS:
             if self.pump_count == 0:
                 return (
-                    "Pumpasid ei ole lisatud",
-                    "Lisa pumpla tehnilised pumbad eraldi kirjetena",
+                    "Pumbad puuduvad",
+                    "Lisa esimene pump, et pumbakomplekt seadistada",
                 )
             return (
                 f"{self.pump_count} pump"
                 f"{'a' if self.pump_count != 1 else ''}",
-                "Üksikpumpade andmed on seotud pumpla ID-ga",
+                "Klõpsa pumbal selle tehniliste andmete avamiseks",
             )
         incoming, outgoing, unknown = self._flow_counts()
         unknown_text = f" · {unknown} määramata" if unknown else ""
@@ -381,507 +476,1122 @@ class SewerPumpingStationPreviewWidget(QWidget):
 
     def _update_description(self) -> None:
         first, second = self._summary_lines()
-        self.setToolTip(
+        hint = (
             f"{first}\n{second}\n\n"
             "Klõpsa pumpla osal, et avada selle parameetrite vaheleht."
         )
+        self.setToolTip(hint)
         self.setAccessibleDescription(
-            f"Illustratiivne skeem. {first}. {second}. "
-            "Töövoos liikumiseks kasuta skeemi kõrval olevat sammuriba."
+            f"Pumpla ruumiline ülevaade. {first}. {second}. "
+            "Skeemi elemendid avavad vastava töövoo sammu."
         )
 
-    def paintEvent(self, _event) -> None:  # noqa: N802
-        painter = QPainter(self)
+    def _rebuild_scene(self) -> None:
+        self._graphics_scene.clear()
+        self._artwork = _PumpStationPreviewArtwork(self)
+        self._graphics_scene.addItem(self._artwork)
+        self._build_hotspots()
+        self._graphics_scene.setSceneRect(self.SCENE_RECT)
+        self._fit_scene()
+
+    def _build_hotspots(self) -> None:
+        self._section_rects = {
+            self.SECTION_PUMPS: (QRectF(18, 42, 94, 29),),
+            self.SECTION_CONTROL: (
+                QRectF(297, 113, 70, 124),
+                QRectF(317, 84, 111, 48),
+            ),
+            self.SECTION_FACILITY: (
+                QRectF(112, 126, 210, 361),
+                QRectF(128, 496, 185, 27),
+            ),
+            self.SECTION_PIPES: (
+                QRectF(0, 232, 139, 116),
+                QRectF(303, 220, 137, 112),
+            ),
+        }
+        tooltips = {
+            self.SECTION_PUMPS: "Ava pumpade andmed.",
+            self.SECTION_CONTROL: "Ava juhtimissüsteemi ja seadmete andmed.",
+            self.SECTION_FACILITY: "Ava pumpla rajatise ja asukoha andmed.",
+            self.SECTION_PIPES: "Ava sisse- ja väljundtorustiku andmed.",
+        }
+        for section, rects in self._section_rects.items():
+            for rect in rects:
+                self._add_hotspot(
+                    rect,
+                    section,
+                    lambda target=section: self._activate_section(target),
+                    tooltips[section],
+                    z_value=(
+                        5.0
+                        if section == self.SECTION_FACILITY
+                        else 15.0
+                    ),
+                )
+
+        if self.pump_count == 0:
+            self._add_hotspot(
+                QRectF(151, 286, 138, 141),
+                self.SECTION_PUMPS,
+                self._request_add_pump,
+                "Lisa pumplale esimene pump.",
+                z_value=30,
+            )
+            return
+
+        positions = self._pump_positions()
+        for index, x in enumerate(positions):
+            pump_label = (
+                self.pump_labels[index]
+                if index < len(self.pump_labels)
+                else f"Pump {index + 1}"
+            )
+            self._add_hotspot(
+                QRectF(x - 8, 291, 60, 157),
+                self.SECTION_PUMPS,
+                lambda pump_index=index: self._activate_pump(pump_index),
+                f"Ava pumba {index + 1} andmed: {pump_label}.",
+                z_value=30,
+            )
+        if self.pump_count == 1:
+            self._add_hotspot(
+                QRectF(217, 306, 75, 122),
+                self.SECTION_PUMPS,
+                self._request_add_pump,
+                "Lisa pumplale teine pump.",
+                z_value=30,
+            )
+
+    def _add_hotspot(
+        self,
+        rect: QRectF,
+        section: int,
+        callback,
+        tooltip: str,
+        *,
+        z_value: float = 10.0,
+    ) -> None:
+        self._graphics_scene.addItem(
+            _PumpStationPreviewHotspot(
+                self,
+                rect,
+                section,
+                callback,
+                tooltip,
+                z_value=z_value,
+            )
+        )
+
+    def _activate_section(self, section: int) -> None:
+        self.set_selected_section(section)
+        self.sectionSelected.emit(section)
+
+    def _activate_pump(self, index: int) -> None:
+        self._activate_section(self.SECTION_PUMPS)
+        self.set_selected_pump(index)
+        self.pumpSelected.emit(index)
+
+    def _request_add_pump(self) -> None:
+        self._activate_section(self.SECTION_PUMPS)
+        # The add action rebuilds the scene. Defer it until the hotspot's
+        # mouse event has returned so the active QGraphicsItem is not deleted
+        # while Qt is still dispatching that event.
+        QTimer.singleShot(0, self.addPumpRequested.emit)
+
+    def _set_hovered_section(self, section: int) -> None:
+        if section == self.hovered_section:
+            return
+        self.hovered_section = section
+        if self._artwork is not None:
+            self._artwork.update()
+
+    def _pump_positions(self) -> tuple[float, ...]:
+        if self.pump_count <= 0:
+            return ()
+        if self.pump_count == 1:
+            return (151.0,)
+        return (145.0, 225.0)
+
+    def _paint_diagram(self, painter: QPainter) -> None:
         painter.setRenderHint(QPainter.Antialiasing, True)
-        painter.fillRect(self.rect(), QColor("#f6f7f8"))
-
-        scene_width = 420.0
-        scene_height = 475.0
-        available = QRectF(self.rect()).adjusted(10, 10, -10, -10)
-        self._scale = min(
-            available.width() / scene_width,
-            available.height() / scene_height,
-        )
-        self._origin = QPointF(
-            available.center().x() - scene_width * self._scale / 2.0,
-            available.center().y() - scene_height * self._scale / 2.0,
-        )
-        self._position_overlay_button()
-        painter.translate(self._origin)
-        painter.scale(self._scale, self._scale)
-
+        painter.setRenderHint(QPainter.TextAntialiasing, True)
         self._paint_background(painter)
         self._paint_header(painter)
+        self._paint_selection_glow(painter)
         self._paint_station(painter)
+        self._paint_footer(painter)
 
-    def _paint_background(self, painter: QPainter) -> None:
-        gradient = QLinearGradient(0, 0, 420, 560)
+    @staticmethod
+    def _paint_background(painter: QPainter) -> None:
+        gradient = QLinearGradient(0, 0, 440, 570)
         gradient.setColorAt(0.0, QColor("#ffffff"))
-        gradient.setColorAt(0.55, QColor("#f7fafc"))
-        gradient.setColorAt(1.0, QColor("#eef4f8"))
-        painter.setPen(QPen(QColor("#d0d7de"), 1))
+        gradient.setColorAt(0.64, QColor("#f8fbfd"))
+        gradient.setColorAt(1.0, QColor("#eef5f9"))
+        painter.setPen(QPen(QColor("#d8e1e8"), 1))
         painter.setBrush(QBrush(gradient))
-        painter.drawRoundedRect(QRectF(1, 1, 418, 473), 18, 18)
+        painter.drawRoundedRect(QRectF(1, 1, 438, 568), 15, 15)
 
-        painter.setPen(QPen(QColor(0, 120, 212, 20), 1))
-        for x in range(20, 421, 20):
-            painter.drawLine(x, 76, x, 463)
-        for y in range(76, 464, 20):
-            painter.drawLine(0, y, 420, y)
+        painter.setPen(QPen(QColor(0, 120, 212, 13), 1))
+        for x in range(20, 441, 20):
+            painter.drawLine(x, 80, x, 554)
+        for y in range(80, 555, 20):
+            painter.drawLine(1, y, 439, y)
 
     def _paint_header(self, painter: QPainter) -> None:
+        painter.save()
+        title_font = QFont(painter.font())
+        title_font.setBold(True)
+        title_font.setPointSizeF(8.2)
+        title_font.setLetterSpacing(QFont.AbsoluteSpacing, 1.0)
+        painter.setFont(title_font)
         painter.setPen(QColor("#0078d4"))
-        font = QFont(painter.font())
-        font.setBold(True)
-        font.setPointSizeF(8.5)
-        font.setLetterSpacing(QFont.AbsoluteSpacing, 1.2)
-        painter.setFont(font)
         painter.drawText(
-            QRectF(22, 18, 245, 18),
+            QRectF(19, 14, 185, 18),
             Qt.AlignLeft | Qt.AlignVCenter,
-            "ILLUSTRATIIVNE SKEEM",
+            "PUMPLA RUUMILINE ÜLEVAADE",
         )
+
+        pill = QRectF(18, 42, 94, 29)
+        active = self.selected_section == self.SECTION_PUMPS
+        painter.setBrush(QColor("#eaf4ff" if not active else "#0078d4"))
+        painter.setPen(QPen(QColor("#67aaf9"), 1.2))
+        painter.drawRoundedRect(pill, 7, 7)
+        painter.setPen(QColor("#ffffff" if active else "#0066b3"))
+        count_font = QFont(title_font)
+        count_font.setLetterSpacing(QFont.AbsoluteSpacing, 0)
+        count_font.setPointSizeF(9)
+        painter.setFont(count_font)
+        count_text = (
+            "0 pumpa"
+            if self.pump_count == 0
+            else "1 pump"
+            if self.pump_count == 1
+            else f"{self.pump_count} pumpa"
+        )
+        self._paint_pump_count_icon(
+            painter,
+            active=active,
+            count=self.pump_count,
+        )
+        painter.drawText(
+            pill.adjusted(25, 0, -5, 0),
+            Qt.AlignCenter,
+            count_text,
+        )
+
         first, second = self._summary_lines()
         summary_font = QFont(painter.font())
         summary_font.setBold(True)
         summary_font.setPointSizeF(8.3)
-        summary_font.setLetterSpacing(QFont.AbsoluteSpacing, 0)
         painter.setFont(summary_font)
-        painter.setPen(QColor("#111416"))
+        painter.setPen(QColor("#17212b"))
         painter.drawText(
-            QRectF(22, 39, 250, 14),
+            QRectF(123, 41, 168, 16),
             Qt.AlignLeft | Qt.AlignVCenter,
-            QFontMetrics(summary_font).elidedText(
-                first,
-                Qt.ElideRight,
-                250,
-            ),
+            QFontMetrics(summary_font).elidedText(first, Qt.ElideRight, 168),
         )
         summary_font.setBold(False)
-        summary_font.setPointSizeF(7.8)
+        summary_font.setPointSizeF(7.2)
         painter.setFont(summary_font)
-        painter.setPen(QColor("#57606a"))
+        painter.setPen(QColor("#667788"))
         painter.drawText(
-            QRectF(22, 55, 250, 14),
+            QRectF(123, 57, 168, 15),
             Qt.AlignLeft | Qt.AlignVCenter,
-            QFontMetrics(summary_font).elidedText(
-                second,
-                Qt.ElideRight,
-                250,
-            ),
+            QFontMetrics(summary_font).elidedText(second, Qt.ElideRight, 168),
         )
+        painter.restore()
+
+    @staticmethod
+    def _paint_pump_count_icon(
+        painter: QPainter,
+        *,
+        active: bool,
+        count: int,
+    ) -> None:
+        color = QColor("#ffffff" if active else "#0078d4")
+        if count == 0:
+            painter.setBrush(Qt.NoBrush)
+            painter.setPen(QPen(color, 1.8, Qt.DashLine))
+            painter.drawEllipse(QPointF(32, 56.5), 7, 7)
+            return
+        painter.setBrush(color)
+        painter.setPen(Qt.NoPen)
+        centers = (29.5,) if count == 1 else (27.0, 35.0)
+        for center_x in centers:
+            drop = QPainterPath(QPointF(center_x, 49.5))
+            drop.cubicTo(
+                center_x - 7,
+                57,
+                center_x - 5,
+                63,
+                center_x,
+                63,
+            )
+            drop.cubicTo(
+                center_x + 5,
+                63,
+                center_x + 7,
+                57,
+                center_x,
+                49.5,
+            )
+            painter.drawPath(drop)
+
+    def _paint_selection_glow(self, painter: QPainter) -> None:
+        rects = self._section_rects.get(self.selected_section, ())
+        selected = QColor("#1689e6")
+        selected.setAlpha(24)
+        painter.setBrush(selected)
+        painter.setPen(QPen(QColor(0, 120, 212, 95), 2))
+        for rect in rects:
+            painter.drawRoundedRect(rect.adjusted(-3, -3, 3, 3), 10, 10)
+        if self.hovered_section < 0 or self.hovered_section == self.selected_section:
+            return
+        hovered = QColor("#0f766e")
+        hovered.setAlpha(17)
+        painter.setBrush(hovered)
+        painter.setPen(QPen(QColor(15, 118, 110, 100), 1.5))
+        for rect in self._section_rects.get(self.hovered_section, ()):
+            painter.drawRoundedRect(rect.adjusted(-2, -2, 2, 2), 9, 9)
 
     def _paint_station(self, painter: QPainter) -> None:
-        self._hotspots = {
-            self.SECTION_FACILITY: (
-                QRectF(112, 122, 158, 73),
-                QRectF(78, 411, 278, 52),
-                QRectF(22, 88, 112, 27),
-            ),
-            self.SECTION_PUMPS: (
-                QRectF(139, 224, 145, 188),
-                QRectF(147, 205, 130, 27),
-            ),
-            self.SECTION_CONTROL: (QRectF(270, 92, 68, 112),),
-            self.SECTION_PIPES: (
-                QRectF(28, 250, 120, 105),
-                QRectF(272, 210, 120, 145),
-            ),
-        }
-        self._paint_selection_glow(painter)
-
-        # Concrete base slab.
-        base = QPolygonF(
-            [
-                QPointF(82, 420),
-                QPointF(320, 420),
-                QPointF(360, 446),
-                QPointF(120, 461),
-            ]
-        )
-        base_gradient = QLinearGradient(100, 420, 340, 455)
-        base_gradient.setColorAt(0, QColor("#d9dee4"))
-        base_gradient.setColorAt(1, QColor("#aab4bf"))
-        painter.setBrush(QBrush(base_gradient))
-        painter.setPen(QPen(QColor("#768390"), 1))
-        painter.drawPolygon(base)
-
-        # Cylindrical chamber and water level.
-        body = QRectF(126, 170, 170, 252)
-        body_gradient = QLinearGradient(body.left(), 0, body.right(), 0)
-        body_gradient.setColorAt(0.0, QColor("#aebbc7"))
-        body_gradient.setColorAt(0.22, QColor("#eef2f5"))
-        body_gradient.setColorAt(0.52, QColor("#c4ced7"))
-        body_gradient.setColorAt(0.78, QColor("#f4f6f8"))
-        body_gradient.setColorAt(1.0, QColor("#aab7c3"))
-        painter.setBrush(QBrush(body_gradient))
-        painter.setPen(QPen(QColor("#657687"), 2))
-        painter.drawRoundedRect(body, 20, 20)
-
-        water = QRectF(135, 319, 152, 91)
-        water_gradient = QLinearGradient(0, water.top(), 0, water.bottom())
-        water_gradient.setColorAt(0, QColor(24, 164, 220, 105))
-        water_gradient.setColorAt(1, QColor(5, 69, 118, 165))
-        painter.setBrush(QBrush(water_gradient))
-        painter.setPen(Qt.NoPen)
-        painter.drawRoundedRect(water, 11, 11)
-        painter.setPen(QPen(QColor("#1687c9"), 2))
-        painter.drawArc(QRectF(135, 311, 152, 17), 0, 180 * 16)
-
-        # Chamber rings create the recognisable ribbed enclosure.
-        painter.setPen(QPen(QColor("#7f8c98"), 2))
-        for y in range(186, 416, 15):
-            painter.drawArc(QRectF(126, y - 5, 170, 14), 180 * 16, 180 * 16)
-            painter.drawArc(QRectF(126, y - 5, 170, 14), 0, 180 * 16)
-
-        # Top collar and open service hatch.
-        painter.setBrush(QColor("#e2e7ec"))
-        painter.setPen(QPen(QColor("#657687"), 2))
-        painter.drawEllipse(QRectF(115, 154, 192, 35))
-        painter.drawRoundedRect(QRectF(147, 127, 128, 40), 4, 4)
-        hatch = QPolygonF(
-            [
-                QPointF(150, 128),
-                QPointF(181, 91),
-                QPointF(258, 106),
-                QPointF(272, 129),
-            ]
-        )
-        painter.setBrush(QColor("#cbd3db"))
-        painter.setPen(QPen(QColor("#657687"), 2))
-        painter.drawPolygon(hatch)
-
-        # Electrical control cabinet.
-        cabinet_gradient = QLinearGradient(276, 96, 329, 195)
-        cabinet_gradient.setColorAt(0, QColor("#d9e2e9"))
-        cabinet_gradient.setColorAt(1, QColor("#667787"))
-        painter.setBrush(QBrush(cabinet_gradient))
-        painter.setPen(QPen(QColor("#d8e5ee"), 2))
-        painter.drawRoundedRect(QRectF(278, 101, 51, 91), 3, 3)
-        painter.setBrush(QColor("#344555"))
-        painter.drawRoundedRect(QRectF(286, 114, 34, 43), 2, 2)
-        painter.setBrush(QColor("#39e58c"))
-        painter.setPen(Qt.NoPen)
-        painter.drawEllipse(QRectF(290, 164, 6, 6))
-        painter.setBrush(QColor("#ffbc3d"))
-        painter.drawEllipse(QRectF(300, 164, 6, 6))
-
-        # External pipe stubs reflect the real connection count and flow.
         self._paint_connections(painter)
+        self._paint_anchor_plate(painter)
 
+        # Transparent, ribbed wet well. The shell is a continuous path whose
+        # curved bottom reaches the anchor plate instead of floating above it.
+        body_left = 118.0
+        body_right = 323.0
+        body_top = 166.0
+        body_side_bottom = 456.0
+        body_curve_bottom = 478.0
+        body = QRectF(
+            body_left,
+            body_top,
+            body_right - body_left,
+            body_curve_bottom - body_top,
+        )
+        body_path = QPainterPath(QPointF(body_left + 18, body_top))
+        body_path.quadTo(
+            QPointF(body_left, body_top),
+            QPointF(body_left, body_top + 18),
+        )
+        body_path.lineTo(body_left, body_side_bottom)
+        body_path.cubicTo(
+            body_left,
+            body_curve_bottom,
+            body_right,
+            body_curve_bottom,
+            body_right,
+            body_side_bottom,
+        )
+        body_path.lineTo(body_right, body_top + 18)
+        body_path.quadTo(
+            QPointF(body_right, body_top),
+            QPointF(body_right - 18, body_top),
+        )
+        body_path.closeSubpath()
+
+        body_gradient = QLinearGradient(body.left(), 0, body.right(), 0)
+        body_gradient.setColorAt(0.0, QColor(120, 137, 151, 225))
+        body_gradient.setColorAt(0.17, QColor(237, 243, 247, 225))
+        body_gradient.setColorAt(0.52, QColor(190, 203, 214, 195))
+        body_gradient.setColorAt(0.82, QColor(246, 249, 251, 220))
+        body_gradient.setColorAt(1.0, QColor(113, 132, 148, 230))
+        painter.setBrush(QBrush(body_gradient))
+        painter.setPen(QPen(QColor("#566674"), 2))
+        painter.drawPath(body_path)
+
+        water = QRectF(127, 347, 187, 124)
+        water_gradient = QLinearGradient(0, water.top(), 0, water.bottom())
+        water_gradient.setColorAt(0, QColor(45, 179, 222, 105))
+        water_gradient.setColorAt(1, QColor(0, 93, 151, 180))
+        water_path = QPainterPath(QPointF(water.left(), water.top()))
+        water_path.lineTo(water.right(), water.top())
+        water_path.lineTo(water.right(), 456)
+        water_path.cubicTo(
+            water.right(),
+            471,
+            water.left(),
+            471,
+            water.left(),
+            456,
+        )
+        water_path.closeSubpath()
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(QBrush(water_gradient))
+        painter.drawPath(water_path)
+        painter.setPen(QPen(QColor("#087fbf"), 2))
+        painter.drawArc(QRectF(127, 338, 187, 20), 0, 180 * 16)
+        painter.setPen(QPen(QColor(255, 255, 255, 80), 1))
+        for y in (373, 397, 421, 445):
+            painter.drawArc(QRectF(133, y, 174, 11), 0, 180 * 16)
+
+        painter.setPen(QPen(QColor(104, 120, 133, 145), 1.5))
+        for y in range(187, 456, 18):
+            painter.drawArc(QRectF(119, y - 5, 203, 14), 180 * 16, 180 * 16)
+            painter.drawArc(QRectF(119, y - 5, 203, 14), 0, 180 * 16)
+
+        self._paint_chamber_base_rim(painter)
+
+        self._paint_station_top(painter)
+
+        self._paint_control_cabinet(painter)
         self._paint_pumps(painter)
 
-        self._paint_component_badge(
+        incoming, outgoing, _unknown = self._flow_counts()
+        self._paint_callout(
             painter,
-            QRectF(35, 274, 122, 27),
-            f"04  TORUD · {self.port_count}",
-            self.SECTION_PIPES,
-        )
-        self._paint_component_badge(
-            painter,
-            QRectF(22, 88, 112, 27),
-            "03  RAJATIS",
-            self.SECTION_FACILITY,
-        )
-        self._paint_component_badge(
-            painter,
-            QRectF(277, 76, 108, 27),
-            "02  JUHTIMINE",
+            QRectF(317, 84, 111, 48),
+            "02",
+            "Juhtimine",
+            self.control_label,
             self.SECTION_CONTROL,
+            QPointF(326, 126),
         )
-        self._paint_component_badge(
+        self._paint_callout(
             painter,
-            QRectF(118, 430, 132, 27),
-            "03  ASUKOHT",
-            self.SECTION_FACILITY,
+            QRectF(5, 244, 101, 45),
+            "04",
+            "Sissevool",
+            f"{incoming} ühendust" if incoming else "Sisend",
+            self.SECTION_PIPES,
+            QPointF(89, 315),
         )
-        self._paint_component_badge(
+        self._paint_callout(
             painter,
-            QRectF(147, 205, 130, 27),
-            f"01  PUMBAD · {self.pump_count}",
-            self.SECTION_PUMPS,
+            QRectF(335, 229, 101, 45),
+            "04",
+            "Väljavool",
+            f"{outgoing} ühendust" if outgoing else "Väljund",
+            self.SECTION_PIPES,
+            QPointF(349, 285),
         )
-        self._paint_facility_outline(painter)
+        self._paint_anchor_plate_badge(painter)
 
-    def _paint_pumps(self, painter: QPainter) -> None:
-        visible_count = min(self.pump_count, 3)
-        positions = {
-            1: (193.0,),
-            2: (157.0, 220.0),
-            3: (139.0, 193.0, 247.0),
-        }.get(visible_count, ())
-        if not positions:
-            painter.setPen(QPen(QColor("#93a4b3"), 1.5, Qt.DashLine))
-            painter.setBrush(Qt.NoBrush)
-            painter.drawRoundedRect(QRectF(158, 286, 106, 92), 12, 12)
-            painter.setPen(QColor("#57606a"))
-            painter.drawText(
-                QRectF(158, 315, 106, 24),
-                Qt.AlignCenter,
-                "PUMPASID POLE",
-            )
-            return
+        painter.setPen(QPen(QColor("#087fbf"), 1))
+        painter.drawLine(QPointF(18, 351), QPointF(123, 351))
+        painter.setPen(QColor("#0870b8"))
+        water_font = QFont(painter.font())
+        water_font.setPointSizeF(7)
+        water_font.setBold(True)
+        painter.setFont(water_font)
+        painter.drawText(QRectF(18, 337, 91, 14), Qt.AlignLeft, "VEETASE")
 
-        pipe_centers = []
-        for x in positions:
-            self._paint_pump(painter, x, 286)
-            pipe_centers.append(x + 18)
-        painter.setPen(QPen(QColor("#198fd4"), 7))
-        manifold_y = 246.0
-        for index, center in enumerate(pipe_centers):
-            target_y = manifold_y - min(index, 1) * 8
-            painter.drawLine(
-                QPointF(center, 291),
-                QPointF(center, target_y),
-            )
+    @staticmethod
+    def _paint_station_top(painter: QPainter) -> None:
+        """Paint a centred isometric top collar and access hatch."""
+
+        painter.save()
+        center_x = 220.5
+
+        # A circular collar is shown as a centred elliptical cylinder in the
+        # isometric view. The lower edge follows the same curvature as its top.
+        collar_half_width = 118.0
+        collar_left = center_x - collar_half_width
+        collar_right = center_x + collar_half_width
+        collar_wall = QPainterPath(QPointF(collar_left, 158))
+        collar_wall.lineTo(collar_right, 158)
+        collar_wall.lineTo(collar_right, 170)
+        collar_wall.cubicTo(
+            collar_right,
+            182,
+            collar_left,
+            182,
+            collar_left,
+            170,
+        )
+        collar_wall.closeSubpath()
+        wall_gradient = QLinearGradient(
+            collar_left,
+            0,
+            collar_right,
+            0,
+        )
+        wall_gradient.setColorAt(0.0, QColor("#929fa9"))
+        wall_gradient.setColorAt(0.16, QColor("#e5eaed"))
+        wall_gradient.setColorAt(0.5, QColor("#c6cfd5"))
+        wall_gradient.setColorAt(0.84, QColor("#e8ecef"))
+        wall_gradient.setColorAt(1.0, QColor("#8996a0"))
+        painter.setBrush(QBrush(wall_gradient))
+        painter.setPen(QPen(QColor("#65747f"), 1.25))
+        painter.drawPath(collar_wall)
+
+        top_gradient = QLinearGradient(0, 147, 0, 169)
+        top_gradient.setColorAt(0.0, QColor("#f6f8f9"))
+        top_gradient.setColorAt(0.5, QColor("#e0e5e8"))
+        top_gradient.setColorAt(1.0, QColor("#b9c4cb"))
+        painter.setBrush(QBrush(top_gradient))
+        painter.setPen(QPen(QColor("#6d7b86"), 1.2))
+        painter.drawEllipse(QRectF(collar_left, 147, 236, 22))
+
+        front_edge = QPainterPath(QPointF(collar_left, 158))
+        front_edge.cubicTo(
+            collar_left,
+            169,
+            collar_right,
+            169,
+            collar_right,
+            158,
+        )
+        painter.setBrush(Qt.NoBrush)
+        painter.setPen(QPen(QColor(104, 119, 130, 145), 1.05))
+        painter.drawPath(front_edge)
+
+        lower_edge = QPainterPath(QPointF(collar_left, 170))
+        lower_edge.cubicTo(
+            collar_left,
+            182,
+            collar_right,
+            182,
+            collar_right,
+            170,
+        )
+        painter.setPen(QPen(QColor(73, 87, 98, 135), 1.05))
+        painter.drawPath(lower_edge)
+
+        # Centred access-hatch wall. Its horizontal gradient mirrors the shell
+        # and the shallow bottom curve keeps it seated on the upper collar.
+        hatch_half_width = 69.0
+        hatch_left = center_x - hatch_half_width
+        hatch_right = center_x + hatch_half_width
+        hatch_wall = QPainterPath(QPointF(hatch_left, 121))
+        hatch_wall.lineTo(hatch_right, 121)
+        hatch_wall.lineTo(hatch_right, 148)
+        hatch_wall.cubicTo(
+            hatch_right,
+            154,
+            hatch_left,
+            154,
+            hatch_left,
+            148,
+        )
+        hatch_wall.closeSubpath()
+        wall_gradient = QLinearGradient(hatch_left, 0, hatch_right, 0)
+        wall_gradient.setColorAt(0.0, QColor("#a9b4bd"))
+        wall_gradient.setColorAt(0.18, QColor("#edf1f3"))
+        wall_gradient.setColorAt(0.52, QColor("#cbd3d9"))
+        wall_gradient.setColorAt(0.84, QColor("#eef1f3"))
+        wall_gradient.setColorAt(1.0, QColor("#929fa9"))
+        painter.setBrush(QBrush(wall_gradient))
+        painter.setPen(QPen(QColor("#64737e"), 1.25))
+        painter.drawPath(hatch_wall)
+
+        # The hatch roof repeats the same isometric six-point top plane.
+        roof_rear_half_width = 51.0
+        roof_front_half_width = 62.0
+        roof_outer_half_width = 70.0
+        roof = QPolygonF(
+            [
+                QPointF(center_x - roof_rear_half_width, 101),
+                QPointF(center_x + roof_rear_half_width, 101),
+                QPointF(center_x + roof_outer_half_width, 117),
+                QPointF(center_x + roof_front_half_width, 124),
+                QPointF(center_x - roof_front_half_width, 124),
+                QPointF(center_x - roof_outer_half_width, 117),
+            ]
+        )
+        roof_gradient = QLinearGradient(0, 101, 0, 124)
+        roof_gradient.setColorAt(0.0, QColor("#f5f7f8"))
+        roof_gradient.setColorAt(0.55, QColor("#e0e5e8"))
+        roof_gradient.setColorAt(1.0, QColor("#bcc6cd"))
+        painter.setBrush(QBrush(roof_gradient))
+        painter.setPen(QPen(QColor("#697883"), 1.2))
+        painter.drawPolygon(roof)
+        painter.setPen(QPen(QColor(255, 255, 255, 175), 1))
         painter.drawLine(
-            QPointF(min(pipe_centers), manifold_y),
-            QPointF(max(pipe_centers), manifold_y),
+            QPointF(center_x - roof_rear_half_width + 2, 103),
+            QPointF(center_x + roof_rear_half_width - 2, 103),
         )
-        if self.pump_count > visible_count:
-            painter.setBrush(QColor("#ffffff"))
-            painter.setPen(QPen(QColor("#0078d4"), 2))
-            painter.drawEllipse(QRectF(246, 264, 42, 28))
-            painter.setPen(QColor("#005a9e"))
-            font = QFont(painter.font())
-            font.setBold(True)
-            painter.setFont(font)
-            painter.drawText(
-                QRectF(246, 264, 42, 28),
-                Qt.AlignCenter,
-                f"+{self.pump_count - visible_count}",
+        painter.restore()
+
+    @staticmethod
+    def _paint_property_surface(painter: QPainter) -> None:
+        """Paint a muted parcel/ground plane beneath the anchor plate."""
+
+        center_x = 220.5
+        rear_half_width = 164.0
+        front_half_width = 158.0
+        outer_half_width = 178.0
+        top_back_y = 474.0
+        outer_y = 489.0
+        front_y = 497.0
+        bottom_outer_y = 504.0
+        bottom_y = 510.0
+
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(QColor(44, 62, 37, 18))
+        painter.drawEllipse(QRectF(center_x - 184, 499, 368, 19))
+
+        parcel_front = QPolygonF(
+            [
+                QPointF(center_x - outer_half_width, outer_y),
+                QPointF(center_x - front_half_width, front_y),
+                QPointF(center_x + front_half_width, front_y),
+                QPointF(center_x + outer_half_width, outer_y),
+                QPointF(center_x + outer_half_width - 3, bottom_outer_y),
+                QPointF(center_x + front_half_width + 1, bottom_y),
+                QPointF(center_x - front_half_width - 1, bottom_y),
+                QPointF(center_x - outer_half_width + 3, bottom_outer_y),
+            ]
+        )
+        front_gradient = QLinearGradient(0, outer_y, 0, bottom_y)
+        front_gradient.setColorAt(0.0, QColor("#acbd9c"))
+        front_gradient.setColorAt(0.48, QColor("#93a783"))
+        front_gradient.setColorAt(1.0, QColor("#788d69"))
+        painter.setBrush(QBrush(front_gradient))
+        painter.setPen(QPen(QColor("#718365"), 1.15))
+        painter.drawPolygon(parcel_front)
+
+        parcel_top = QPolygonF(
+            [
+                QPointF(center_x - rear_half_width, top_back_y),
+                QPointF(center_x + rear_half_width, top_back_y),
+                QPointF(center_x + outer_half_width, outer_y),
+                QPointF(center_x + front_half_width, front_y),
+                QPointF(center_x - front_half_width, front_y),
+                QPointF(center_x - outer_half_width, outer_y),
+            ]
+        )
+        top_gradient = QLinearGradient(0, top_back_y, 0, front_y)
+        top_gradient.setColorAt(0.0, QColor("#e5eddd"))
+        top_gradient.setColorAt(0.5, QColor("#d2dfc7"))
+        top_gradient.setColorAt(1.0, QColor("#b8c9aa"))
+        painter.setBrush(QBrush(top_gradient))
+        boundary_pen = QPen(QColor("#78906b"), 1.2)
+        boundary_pen.setJoinStyle(Qt.MiterJoin)
+        painter.setPen(boundary_pen)
+        painter.drawPolygon(parcel_top)
+
+        # Two short boundary strokes make the plane read as a parcel without
+        # competing with the technical foundation drawing above it.
+        boundary_detail = QPen(QColor(92, 119, 78, 115), 1, Qt.DashLine)
+        painter.setPen(boundary_detail)
+        painter.drawLine(
+            QPointF(center_x - outer_half_width + 8, outer_y + 1),
+            QPointF(center_x - front_half_width + 16, front_y - 1),
+        )
+        painter.drawLine(
+            QPointF(center_x + outer_half_width - 8, outer_y + 1),
+            QPointF(center_x + front_half_width - 16, front_y - 1),
+        )
+
+    def _paint_anchor_plate(self, painter: QPainter) -> None:
+        """Paint the concrete anchor plate and its raised rear support."""
+
+        painter.save()
+        self._paint_property_surface(painter)
+
+        # Every horizontal measure is mirrored from the chamber centre. This
+        # prevents individual faces from drifting apart as the design evolves.
+        center_x = 220.5
+        rear_half_width = 128.0
+        front_half_width = 139.0
+        outer_half_width = 158.0
+        top_back_y = 455.0
+        outer_y = 472.0
+        front_y = 480.0
+        bottom_outer_y = 489.0
+        bottom_y = 496.0
+
+        # One continuous front body replaces separately positioned spacers.
+        front_face = QPolygonF(
+            [
+                QPointF(center_x - outer_half_width, outer_y),
+                QPointF(center_x - front_half_width, front_y),
+                QPointF(center_x + front_half_width, front_y),
+                QPointF(center_x + outer_half_width, outer_y),
+                QPointF(center_x + outer_half_width - 3, bottom_outer_y),
+                QPointF(center_x + front_half_width + 1, bottom_y),
+                QPointF(center_x - front_half_width - 1, bottom_y),
+                QPointF(center_x - outer_half_width + 3, bottom_outer_y),
+            ]
+        )
+        front_gradient = QLinearGradient(0, outer_y, 0, bottom_y)
+        front_gradient.setColorAt(0.0, QColor("#c8d0d6"))
+        front_gradient.setColorAt(0.45, QColor("#aab5bd"))
+        front_gradient.setColorAt(1.0, QColor("#7f8c96"))
+        painter.setBrush(QBrush(front_gradient))
+        painter.setPen(QPen(QColor("#687681"), 1.2))
+        painter.drawPolygon(front_face)
+
+        # The broad top plane is derived from the same mirrored dimensions.
+        top_face = QPolygonF(
+            [
+                QPointF(center_x - rear_half_width, top_back_y),
+                QPointF(center_x + rear_half_width, top_back_y),
+                QPointF(center_x + outer_half_width, outer_y),
+                QPointF(center_x + front_half_width, front_y),
+                QPointF(center_x - front_half_width, front_y),
+                QPointF(center_x - outer_half_width, outer_y),
+            ]
+        )
+        top_gradient = QLinearGradient(0, top_back_y, 0, front_y)
+        top_gradient.setColorAt(0.0, QColor("#f6f8f9"))
+        top_gradient.setColorAt(0.48, QColor("#dfe4e8"))
+        top_gradient.setColorAt(1.0, QColor("#b9c3ca"))
+        painter.setBrush(QBrush(top_gradient))
+        painter.setPen(QPen(QColor("#72808a"), 1.2))
+        painter.drawPolygon(top_face)
+
+        # Symmetrical bevel seams and restrained highlights define the plate
+        # without making it look as if it was assembled from loose blocks.
+        painter.setPen(QPen(QColor(92, 108, 120, 125), 1))
+        painter.drawLine(
+            QPointF(center_x - front_half_width, front_y),
+            QPointF(center_x - front_half_width - 1, bottom_y),
+        )
+        painter.drawLine(
+            QPointF(center_x + front_half_width, front_y),
+            QPointF(center_x + front_half_width + 1, bottom_y),
+        )
+        painter.setPen(QPen(QColor(255, 255, 255, 178), 1.05))
+        painter.drawLine(
+            QPointF(center_x - rear_half_width + 2, top_back_y + 2),
+            QPointF(center_x + rear_half_width - 2, top_back_y + 2),
+        )
+
+        painter.restore()
+
+    @staticmethod
+    def _paint_chamber_base_rim(painter: QPainter) -> None:
+        """Join the shell's bottom curve cleanly to the anchor plate."""
+
+        painter.save()
+        center_x = 220.5
+        rim_half_width = 106.0
+        left = center_x - rim_half_width
+        right = center_x + rim_half_width
+        rim = QPainterPath(QPointF(left, 452))
+        rim.cubicTo(left, 474, right, 474, right, 452)
+        rim.lineTo(right, 461)
+        rim.cubicTo(right, 483, left, 483, left, 461)
+        rim.closeSubpath()
+
+        rim_gradient = QLinearGradient(0, 452, 0, 483)
+        rim_gradient.setColorAt(0.0, QColor("#e9eef1"))
+        rim_gradient.setColorAt(0.42, QColor("#bcc6cd"))
+        rim_gradient.setColorAt(1.0, QColor("#71808b"))
+        painter.setBrush(QBrush(rim_gradient))
+        painter.setPen(QPen(QColor("#61707b"), 1.35))
+        painter.drawPath(rim)
+
+        upper_edge = QPainterPath(QPointF(left, 452))
+        upper_edge.cubicTo(
+            left,
+            474,
+            right,
+            474,
+            right,
+            452,
+        )
+        painter.setBrush(Qt.NoBrush)
+        painter.setPen(QPen(QColor(255, 255, 255, 185), 1.15))
+        painter.drawPath(upper_edge)
+
+        lower_edge = QPainterPath(QPointF(left, 461))
+        lower_edge.cubicTo(
+            left,
+            483,
+            right,
+            483,
+            right,
+            461,
+        )
+        painter.setPen(QPen(QColor(71, 84, 94, 135), 1.15))
+        painter.drawPath(lower_edge)
+        painter.restore()
+
+    def _paint_anchor_plate_badge(self, painter: QPainter) -> None:
+        """Place the facility/location workflow label on the anchor plate."""
+
+        rect = QRectF(128, 497, 185, 25)
+        active = self.selected_section == self.SECTION_FACILITY
+        hovered = (
+            self.hovered_section == self.SECTION_FACILITY and not active
+        )
+        painter.setBrush(QColor("#0078d4" if active else "#ffffff"))
+        painter.setPen(
+            QPen(
+                QColor(
+                    "#0078d4"
+                    if active
+                    else "#0f766e"
+                    if hovered
+                    else "#c4d0d9"
+                ),
+                1.35 if active or hovered else 1.0,
             )
+        )
+        painter.drawRoundedRect(rect, 6, 6)
+
+        font = QFont(painter.font())
+        font.setBold(True)
+        font.setPointSizeF(7.1)
+        painter.setFont(font)
+        painter.setPen(QColor("#ffffff" if active else "#273947"))
+        painter.drawText(
+            rect.adjusted(9, 0, -18, 0),
+            Qt.AlignCenter,
+            "03  RAJATIS JA ASUKOHT",
+        )
+        state_color = (
+            QColor("#35a854")
+            if self._section_state(self.SECTION_FACILITY) == "ready"
+            else QColor("#f0a32f")
+        )
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(state_color)
+        painter.drawEllipse(
+            QRectF(rect.right() - 11, rect.center().y() - 2.5, 5, 5)
+        )
 
     def _paint_connections(self, painter: QPainter) -> None:
-        incoming = [
-            port for port in self.ports if port.is_outgoing is False
-        ]
-        outgoing = [
-            port for port in self.ports if port.is_outgoing is True
-        ]
-        unknown = [
-            port for port in self.ports if port.is_outgoing is None
-        ]
-        left_ports = [(port, False) for port in incoming]
-        right_ports = [(port, False) for port in outgoing]
-        for index, port in enumerate(unknown):
-            target = left_ports if index % 2 == 0 else right_ports
-            target.append((port, True))
+        self._paint_pipe(painter, QPointF(2, 315), QPointF(139, 315))
+        self._paint_pipe(painter, QPointF(303, 285), QPointF(438, 285))
+        self._paint_valve(painter, QPointF(84, 315))
+        self._paint_valve(painter, QPointF(354, 285))
+        self._paint_flow_arrow(painter, QPointF(28, 315), True)
+        self._paint_flow_arrow(painter, QPointF(416, 285), True)
 
-        left_rows = (315.0, 278.0, 352.0)
-        right_rows = (230.0, 268.0, 306.0)
-        for side, entries, rows in (
-            ("left", left_ports, left_rows),
-            ("right", right_ports, right_rows),
-        ):
-            for index, (_port, direction_unknown) in enumerate(entries[:3]):
-                y = rows[index]
-                color = QColor(
-                    "#e5a83b" if direction_unknown else "#198fd4"
-                )
-                pipe_pen = QPen(color, 9)
-                pipe_pen.setCapStyle(Qt.RoundCap)
-                pipe_pen.setJoinStyle(Qt.RoundJoin)
-                if direction_unknown:
-                    pipe_pen.setStyle(Qt.DashLine)
-                painter.setPen(pipe_pen)
-                painter.setBrush(Qt.NoBrush)
-                if side == "left":
-                    painter.drawLine(QPointF(35, y), QPointF(145, y))
-                    self._paint_valve(painter, QPointF(104, y))
-                    if not direction_unknown:
-                        self._paint_flow_arrow(
-                            painter,
-                            QPointF(54, y),
-                            points_right=True,
-                        )
-                else:
-                    end_y = y - 16 if index == 0 else y
-                    path = QPainterPath(QPointF(278, y))
-                    path.lineTo(335, y)
-                    path.lineTo(382, end_y)
-                    painter.drawPath(path)
-                    self._paint_valve(painter, QPointF(309, y))
-                    if not direction_unknown:
-                        self._paint_flow_arrow(
-                            painter,
-                            QPointF(365, end_y),
-                            points_right=True,
-                        )
+        incoming, outgoing, unknown = self._flow_counts()
+        extra = max(incoming - 1, 0) + max(outgoing - 1, 0) + unknown
+        if extra:
+            painter.setBrush(QColor("#ffffff"))
+            painter.setPen(QPen(QColor("#8ca0b1"), 1))
+            painter.drawRoundedRect(QRectF(351, 309, 66, 22), 6, 6)
+            painter.setPen(QColor("#526473"))
+            font = QFont(painter.font())
+            font.setBold(True)
+            font.setPointSizeF(7)
+            painter.setFont(font)
+            painter.drawText(
+                QRectF(351, 309, 66, 22),
+                Qt.AlignCenter,
+                f"+{extra} ühendust",
+            )
 
-            hidden_count = max(len(entries) - len(rows), 0)
-            if hidden_count:
-                painter.setPen(QColor("#57606a"))
-                font = QFont(painter.font())
-                font.setBold(True)
-                font.setPointSizeF(8)
-                painter.setFont(font)
-                rect = (
-                    QRectF(28, 368, 100, 18)
-                    if side == "left"
-                    else QRectF(294, 326, 100, 18)
-                )
-                painter.drawText(
-                    rect,
-                    Qt.AlignCenter,
-                    f"+{hidden_count} ühendust",
-                )
+    @staticmethod
+    def _paint_pipe(painter: QPainter, start: QPointF, end: QPointF) -> None:
+        main = QPen(QColor("#7d8994"), 19)
+        main.setCapStyle(Qt.RoundCap)
+        painter.setPen(main)
+        painter.drawLine(start, end)
+        highlight = QPen(QColor("#e8edf1"), 11)
+        highlight.setCapStyle(Qt.RoundCap)
+        painter.setPen(highlight)
+        painter.drawLine(start, end)
+        painter.setPen(QPen(QColor(255, 255, 255, 150), 2))
+        painter.drawLine(
+            QPointF(start.x(), start.y() - 3),
+            QPointF(end.x(), end.y() - 3),
+        )
 
     @staticmethod
     def _paint_flow_arrow(
         painter: QPainter,
         center: QPointF,
-        *,
         points_right: bool,
     ) -> None:
         direction = 1 if points_right else -1
+        painter.setPen(QPen(QColor("#f2a800"), 3))
+        painter.drawLine(
+            QPointF(center.x() - 10 * direction, center.y()),
+            QPointF(center.x() + 8 * direction, center.y()),
+        )
         painter.setPen(Qt.NoPen)
-        painter.setBrush(QColor("#2188ff"))
+        painter.setBrush(QColor("#f2a800"))
         painter.drawPolygon(
             QPolygonF(
                 [
-                    QPointF(center.x() - 8 * direction, center.y() - 10),
-                    QPointF(center.x() - 8 * direction, center.y() + 10),
                     QPointF(center.x() + 8 * direction, center.y()),
+                    QPointF(center.x() - 1 * direction, center.y() - 6),
+                    QPointF(center.x() - 1 * direction, center.y() + 6),
                 ]
             )
         )
-
-    def _paint_facility_outline(self, painter: QPainter) -> None:
-        """Outline the station shell without highlighting its pumps."""
-        if self.selected_section != self.SECTION_FACILITY:
-            return
-        painter.setBrush(Qt.NoBrush)
-        painter.setPen(QPen(QColor("#0078d4"), 3))
-        painter.drawRoundedRect(QRectF(112, 124, 198, 303), 22, 22)
-        painter.drawPolyline(
-            QPolygonF(
-                [
-                    QPointF(82, 420),
-                    QPointF(120, 461),
-                    QPointF(360, 446),
-                ]
-            )
-        )
-
-    def _paint_selection_glow(self, painter: QPainter) -> None:
-        selected_glow = QColor("#0078d4")
-        selected_glow.setAlpha(32)
-        painter.setBrush(selected_glow)
-        painter.setPen(QPen(QColor("#0078d4"), 3))
-        for rect in self._hotspots.get(self.selected_section, ()):
-            painter.drawRoundedRect(rect.adjusted(-5, -5, 5, 5), 10, 10)
-        if (
-            self.hovered_section >= 0
-            and self.hovered_section != self.selected_section
-        ):
-            hover_glow = QColor("#0f766e")
-            hover_glow.setAlpha(20)
-            painter.setBrush(hover_glow)
-            painter.setPen(QPen(QColor("#0f766e"), 2))
-            for rect in self._hotspots.get(self.hovered_section, ()):
-                painter.drawRoundedRect(
-                    rect.adjusted(-4, -4, 4, 4),
-                    9,
-                    9,
-                )
-
-    @staticmethod
-    def _paint_pump(painter: QPainter, x: float, y: float) -> None:
-        gradient = QLinearGradient(x, y, x + 36, y)
-        gradient.setColorAt(0, QColor("#718090"))
-        gradient.setColorAt(0.5, QColor("#e7ebef"))
-        gradient.setColorAt(1, QColor("#657483"))
-        painter.setBrush(QBrush(gradient))
-        painter.setPen(QPen(QColor("#566675"), 1.5))
-        painter.drawRoundedRect(QRectF(x, y, 36, 91), 13, 13)
-        painter.drawEllipse(QRectF(x + 3, y - 8, 30, 20))
-        painter.setBrush(QColor("#354655"))
-        painter.drawRoundedRect(QRectF(x + 5, y + 65, 26, 25), 7, 7)
 
     @staticmethod
     def _paint_valve(painter: QPainter, center: QPointF) -> None:
         painter.setBrush(QColor("#ffffff"))
-        painter.setPen(QPen(QColor("#0078d4"), 3))
-        painter.drawEllipse(center, 11, 11)
+        painter.setPen(QPen(QColor("#087fc5"), 2.5))
+        painter.drawEllipse(center, 10, 10)
         painter.drawLine(
-            QPointF(center.x() - 9, center.y()),
-            QPointF(center.x() + 9, center.y()),
+            QPointF(center.x() - 8, center.y() - 8),
+            QPointF(center.x() + 8, center.y() + 8),
         )
         painter.drawLine(
-            QPointF(center.x(), center.y() - 9),
-            QPointF(center.x(), center.y() + 9),
+            QPointF(center.x() - 8, center.y() + 8),
+            QPointF(center.x() + 8, center.y() - 8),
+        )
+        painter.drawLine(
+            QPointF(center.x(), center.y() - 10),
+            QPointF(center.x(), center.y() - 17),
+        )
+        painter.drawLine(
+            QPointF(center.x() - 7, center.y() - 17),
+            QPointF(center.x() + 7, center.y() - 17),
         )
 
-    def _paint_component_badge(
+    @staticmethod
+    def _paint_control_cabinet(painter: QPainter) -> None:
+        painter.setPen(QPen(QColor(27, 44, 58, 32), 8))
+        painter.setBrush(Qt.NoBrush)
+        painter.drawRoundedRect(QRectF(299, 116, 65, 118), 5, 5)
+        cabinet = QLinearGradient(299, 116, 365, 234)
+        cabinet.setColorAt(0, QColor("#f2f5f7"))
+        cabinet.setColorAt(0.58, QColor("#c6d0d8"))
+        cabinet.setColorAt(1, QColor("#8594a0"))
+        painter.setBrush(QBrush(cabinet))
+        painter.setPen(QPen(QColor("#536675"), 1.6))
+        painter.drawRoundedRect(QRectF(299, 116, 65, 118), 4, 4)
+        painter.setBrush(QColor("#243846"))
+        painter.drawRoundedRect(QRectF(309, 129, 45, 48), 3, 3)
+        screen = QLinearGradient(312, 132, 350, 172)
+        screen.setColorAt(0, QColor("#14252f"))
+        screen.setColorAt(1, QColor("#5d7a86"))
+        painter.setBrush(QBrush(screen))
+        painter.drawRoundedRect(QRectF(313, 133, 37, 39), 2, 2)
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(QColor("#45b649"))
+        painter.drawEllipse(QRectF(313, 187, 7, 7))
+        painter.setBrush(QColor("#f6ba2f"))
+        painter.drawEllipse(QRectF(325, 187, 7, 7))
+        painter.setBrush(QColor("#d7e0e6"))
+        painter.setPen(QPen(QColor("#647786"), 1))
+        painter.drawRoundedRect(QRectF(343, 184, 8, 20), 2, 2)
+
+    def _paint_pumps(self, painter: QPainter) -> None:
+        if self.pump_count == 0:
+            self._paint_empty_pump_slot(
+                painter,
+                QRectF(151, 286, 138, 141),
+                "Pumbad puuduvad",
+                "Lisa esimene pump",
+            )
+            return
+
+        positions = self._pump_positions()
+        painter.setPen(QPen(QColor("#087fc5"), 5.5))
+        manifold_y = 282.0
+        centers = []
+        for index, x in enumerate(positions):
+            center_x = x + 22
+            centers.append(center_x)
+            painter.drawLine(QPointF(center_x, 323), QPointF(center_x, manifold_y))
+            self._paint_pump(painter, x, 323, index)
+        if centers:
+            painter.drawLine(
+                QPointF(min(centers), manifold_y),
+                QPointF(max(centers), manifold_y),
+            )
+
+        if self.pump_count == 1:
+            self._paint_empty_pump_slot(
+                painter,
+                QRectF(217, 306, 75, 122),
+                "+",
+                "Lisa teine pump",
+            )
+        elif self.pump_count > 2:
+            painter.setBrush(QColor("#ffffff"))
+            painter.setPen(QPen(QColor("#1689e6"), 1.5))
+            painter.drawRoundedRect(QRectF(270, 298, 44, 25), 7, 7)
+            painter.setPen(QColor("#0067b1"))
+            font = QFont(painter.font())
+            font.setBold(True)
+            font.setPointSizeF(8)
+            painter.setFont(font)
+            painter.drawText(
+                QRectF(270, 298, 44, 25),
+                Qt.AlignCenter,
+                f"+{self.pump_count - 2}",
+            )
+
+    def _paint_pump(
+        self,
+        painter: QPainter,
+        x: float,
+        y: float,
+        index: int,
+    ) -> None:
+        selected = index == self.selected_pump
+        ready = index < len(self.pump_ready) and self.pump_ready[index]
+        if selected:
+            painter.setPen(QPen(QColor(0, 120, 212, 55), 10))
+            painter.setBrush(Qt.NoBrush)
+            painter.drawRoundedRect(QRectF(x - 4, y - 7, 52, 127), 16, 16)
+
+        gradient = QLinearGradient(x, y, x + 44, y)
+        gradient.setColorAt(0, QColor("#596a78"))
+        gradient.setColorAt(0.18, QColor("#b9c4cc"))
+        gradient.setColorAt(0.48, QColor("#f4f6f7"))
+        gradient.setColorAt(0.76, QColor("#9caab5"))
+        gradient.setColorAt(1, QColor("#4d5c69"))
+        painter.setBrush(QBrush(gradient))
+        painter.setPen(QPen(QColor("#435462"), 1.4))
+        body_path = QPainterPath()
+        body_path.moveTo(x + 10, y + 16)
+        body_path.cubicTo(x + 7, y + 29, x + 3, y + 44, x + 3, y + 68)
+        body_path.lineTo(x + 3, y + 89)
+        body_path.cubicTo(x + 3, y + 101, x + 41, y + 101, x + 41, y + 89)
+        body_path.lineTo(x + 41, y + 68)
+        body_path.cubicTo(x + 41, y + 44, x + 37, y + 29, x + 34, y + 16)
+        body_path.closeSubpath()
+        painter.drawPath(body_path)
+        painter.drawEllipse(QRectF(x + 10, y + 4, 24, 25))
+        painter.setBrush(QColor("#344957"))
+        painter.drawRoundedRect(QRectF(x, y + 84, 44, 30), 8, 8)
+        painter.setPen(QPen(QColor("#80909b"), 2))
+        for offset in (8, 17, 26, 35):
+            painter.drawLine(
+                QPointF(x + offset, y + 91),
+                QPointF(x + offset - 2, y + 109),
+            )
+
+        label = QRectF(x - 4, y - 28, 52, 24)
+        painter.setBrush(QColor("#0078d4" if selected else "#eaf4ff"))
+        painter.setPen(QPen(QColor("#1689e6"), 1.1))
+        painter.drawRoundedRect(label, 6, 6)
+        painter.setPen(QColor("#ffffff" if selected else "#0067b1"))
+        font = QFont(painter.font())
+        font.setBold(True)
+        font.setPointSizeF(7.4)
+        painter.setFont(font)
+        painter.drawText(label, Qt.AlignCenter, f"Pump {index + 1}")
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(QColor("#35a854" if ready else "#f0a32f"))
+        painter.drawEllipse(QRectF(label.right() - 7, label.top() + 3, 5, 5))
+
+    @staticmethod
+    def _paint_empty_pump_slot(
+        painter: QPainter,
+        rect: QRectF,
+        title: str,
+        action: str,
+    ) -> None:
+        painter.setBrush(QColor(255, 255, 255, 205))
+        pen = QPen(QColor("#8eb9dd"), 1.4, Qt.DashLine)
+        painter.setPen(pen)
+        painter.drawRoundedRect(rect, 11, 11)
+        title_font = QFont(painter.font())
+        title_font.setBold(True)
+        title_font.setPointSizeF(8)
+        painter.setFont(title_font)
+        painter.setPen(QColor("#31495b"))
+        painter.drawText(
+            rect.adjusted(5, 28, -5, -61),
+            Qt.AlignCenter | Qt.TextWordWrap,
+            title,
+        )
+        action_rect = QRectF(
+            rect.left() + 9,
+            rect.bottom() - 44,
+            rect.width() - 18,
+            30,
+        )
+        painter.setBrush(QColor("#eaf4ff"))
+        painter.setPen(QPen(QColor("#67aaf9"), 1))
+        painter.drawRoundedRect(action_rect, 7, 7)
+        painter.setPen(QColor("#0067b1"))
+        action_font = QFont(title_font)
+        action_font.setPointSizeF(7.2)
+        painter.setFont(action_font)
+        painter.drawText(
+            action_rect.adjusted(4, 0, -4, 0),
+            Qt.AlignCenter | Qt.TextWordWrap,
+            action,
+        )
+
+    def _section_state(self, section: int) -> str:
+        if section == self.SECTION_PUMPS:
+            if self.pump_count == 0:
+                return "empty"
+            complete = (
+                len(self.pump_ready) >= self.pump_count
+                and all(self.pump_ready[: self.pump_count])
+            )
+            return "ready" if complete else "warning"
+        if section == self.SECTION_CONTROL:
+            return "warning" if "valimata" in self.control_label.casefold() else "ready"
+        if section == self.SECTION_FACILITY:
+            missing = any(
+                "valimata" in value.casefold()
+                for value in (self.type_label, self.role_label, self.material_label)
+            )
+            return "warning" if missing else "ready"
+        return "ready" if self.port_count else "warning"
+
+    def _paint_callout(
         self,
         painter: QPainter,
         rect: QRectF,
-        text: str,
+        number: str,
+        title: str,
+        subtitle: str,
         section: int,
+        target: QPointF,
     ) -> None:
         active = section == self.selected_section
         hovered = section == self.hovered_section and not active
-        painter.setBrush(QColor("#0078d4" if active else "#f0f4f8"))
+        start = rect.center()
+        painter.setPen(QPen(QColor("#b4c5d2"), 1.1))
+        painter.drawLine(start, target)
+        painter.setBrush(QColor("#0078d4" if active else "#ffffff"))
         painter.setPen(
             QPen(
-                QColor(
-                    "#005a9e"
-                    if active
-                    else "#0f766e"
-                    if hovered
-                    else "#b6c2cd"
-                ),
-                1.5 if active or hovered else 1,
+                QColor("#0078d4" if active else "#0f766e" if hovered else "#c7d4de"),
+                1.4 if active or hovered else 1.0,
             )
         )
         painter.drawRoundedRect(rect, 7, 7)
-        painter.setPen(QColor("#ffffff" if active else "#24292e"))
-        badge_font = QFont(painter.font())
-        badge_font.setBold(True)
-        badge_font.setPointSizeF(7.5)
-        painter.setFont(badge_font)
-        painter.drawText(rect, Qt.AlignCenter, text)
-
-    def mouseMoveEvent(self, event) -> None:  # noqa: N802
-        hovered = self._section_at(event.pos())
-        if hovered != self.hovered_section:
-            self.hovered_section = hovered
-            self.setCursor(
-                Qt.PointingHandCursor
-                if hovered >= 0
-                else Qt.ArrowCursor
-            )
-            self.update()
-        super().mouseMoveEvent(event)
-
-    def leaveEvent(self, event) -> None:  # noqa: N802
-        if self.hovered_section != -1:
-            self.hovered_section = -1
-            self.setCursor(Qt.ArrowCursor)
-            self.update()
-        super().leaveEvent(event)
-
-    def mousePressEvent(self, event) -> None:  # noqa: N802
-        if event.button() != Qt.LeftButton:
-            return
-        section = self._section_at(event.pos())
-        if section < 0:
-            return
-        self.set_selected_section(section)
-        self.sectionSelected.emit(section)
-
-    def _section_at(self, widget_point) -> int:
-        if self._scale <= 0:
-            return -1
-        scene_point = QPointF(
-            (widget_point.x() - self._origin.x()) / self._scale,
-            (widget_point.y() - self._origin.y()) / self._scale,
+        title_font = QFont(painter.font())
+        title_font.setBold(True)
+        title_font.setPointSizeF(7.4)
+        painter.setFont(title_font)
+        painter.setPen(QColor("#ffffff" if active else "#0069b5"))
+        painter.drawText(
+            QRectF(rect.left() + 8, rect.top() + 4, rect.width() - 16, 15),
+            Qt.AlignLeft | Qt.AlignVCenter,
+            f"{number}  {title}",
         )
-        for section, rects in self._hotspots.items():
-            if any(rect.contains(scene_point) for rect in rects):
-                return section
-        return -1
+        subtitle_font = QFont(title_font)
+        subtitle_font.setBold(False)
+        subtitle_font.setPointSizeF(6.8)
+        painter.setFont(subtitle_font)
+        subtitle_color = QColor("#eaf5ff") if active else QColor("#4f6271")
+        painter.setPen(subtitle_color)
+        elided = QFontMetrics(subtitle_font).elidedText(
+            subtitle or "Pole määratud",
+            Qt.ElideRight,
+            int(rect.width() - 25),
+        )
+        painter.drawText(
+            QRectF(rect.left() + 8, rect.top() + 22, rect.width() - 18, 16),
+            Qt.AlignLeft | Qt.AlignVCenter,
+            elided,
+        )
+        state_colors = {
+            "ready": QColor("#35a854"),
+            "warning": QColor("#f0a32f"),
+            "empty": QColor("#8a99a6"),
+        }
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(state_colors[self._section_state(section)])
+        painter.drawEllipse(QRectF(rect.right() - 10, rect.top() + 7, 5, 5))
+
+    @staticmethod
+    def _paint_footer(painter: QPainter) -> None:
+        painter.setPen(QColor("#687987"))
+        font = QFont(painter.font())
+        font.setPointSizeF(7)
+        painter.setFont(font)
+        painter.drawText(
+            QRectF(14, 552, 412, 13),
+            Qt.AlignLeft | Qt.AlignVCenter,
+            "Klõpsa skeemi elemendil, et avada või muuta selle andmeid.",
+        )
 
 
 class SewerPumpingStationDialog(QDialog):
@@ -974,17 +1684,27 @@ class SewerPumpingStationDialog(QDialog):
         editor_intro.addWidget(self.preview_show_button)
         editor_layout.addLayout(editor_intro)
         self.tabs = QTabWidget(self)
-        self.tabs.setTabBar(PumpStationStepTabBar(self.tabs))
-        self.tabs.addTab(self._pumps_tab(), "01 · Pumbad")
-        self.tabs.addTab(self._electrical_tab(), "02 · Juhtimine")
+        configure_evel_tabs(self.tabs)
+        self.tabs.addTab(
+            self._pumps_tab(),
+            catalog_icon(ICON_PUMPING_STATION),
+            "01  Pumbad",
+        )
+        self.tabs.addTab(
+            self._electrical_tab(),
+            catalog_icon(ICON_CONFIGURE),
+            "02  Juhtimine",
+        )
         self.tabs.addTab(
             self._general_tab(),
-            "03 · Rajatis ja asukoht",
+            catalog_icon(ICON_FIELD_ADDRESS),
+            "03  Rajatis ja asukoht",
         )
-        self.tabs.addTab(self._pipes_tab(), "04 · Torud")
-        self.tabs.tabBar().setExpanding(True)
-        self.tabs.tabBar().setUsesScrollButtons(False)
-        self.tabs.tabBar().setElideMode(Qt.ElideNone)
+        self.tabs.addTab(
+            self._pipes_tab(),
+            catalog_icon(ICON_DUCT_TAB),
+            "04  Torud",
+        )
         editor_layout.addWidget(self.tabs, 1)
         self.splitter.addWidget(editor_frame)
         self.splitter.setStretchFactor(0, 3)
@@ -1284,6 +2004,8 @@ class SewerPumpingStationDialog(QDialog):
 
     def _connect_live_preview(self) -> None:
         self.preview.sectionSelected.connect(self.tabs.setCurrentIndex)
+        self.preview.pumpSelected.connect(self.pump_list.setCurrentRow)
+        self.preview.addPumpRequested.connect(self._add_pump)
         self.tabs.currentChanged.connect(self._section_changed)
         for combo in (
             self.type_combo,
@@ -1466,44 +2188,53 @@ class SewerPumpingStationDialog(QDialog):
         valid_location = not parcel or bool(
             self.PARCEL_PATTERN.fullmatch(parcel)
         )
-        facility_label = (
-            "03  Rajatis ja asukoht\nValmis ✓"
+        facility_status = (
+            "Valmis ✓"
             if facility_count == 4 and valid_location
-            else "03  Rajatis ja asukoht\nKontrolli asukohta"
+            else "Kontrolli asukohta"
             if facility_count == 4
-            else f"03  Rajatis ja asukoht\n{facility_count}/4 täidetud"
+            else f"{facility_count}/4 täidetud"
         )
         pump_count = len(self._pump_configs)
         pumps_valid = self._pumps_valid()
-        pump_label = (
-            f"01  Pumbad\n{pump_count} pump"
+        pump_status = (
+            f"{pump_count} pump"
             f"{'a' if pump_count != 1 else ''} ✓"
             if pump_count and pumps_valid
-            else "01  Pumbad\nKontrolli andmeid"
+            else "Kontrolli andmeid"
             if pump_count
-            else "01  Pumbad\nLisamata"
+            else "Lisamata"
         )
-        control_label = (
-            "02  Juhtimine\nValmis ✓"
+        control_status = (
+            "Valmis ✓"
             if values["control"]
-            else "02  Juhtimine\nTäitmata"
+            else "Täitmata"
         )
         pipe_count = len(self.state.topology.ports)
-        pipe_label = (
-            f"04  Torud\n{pipe_count} ühendus"
+        pipe_status = (
+            f"{pipe_count} ühendus"
             f"{'t' if pipe_count != 1 else ''} ✓"
             if pipe_count
-            else "04  Torud\nÜhenduseta"
+            else "Ühenduseta"
         )
-        for index, text in enumerate(
-            (
-                pump_label,
-                control_label,
-                facility_label,
-                pipe_label,
+        for index, (title, status) in enumerate(
+            zip(
+                (
+                    "01  Pumbad",
+                    "02  Juhtimine",
+                    "03  Rajatis ja asukoht",
+                    "04  Torud",
+                ),
+                (
+                    pump_status,
+                    control_status,
+                    facility_status,
+                    pipe_status,
+                ),
             )
         ):
-            self.tabs.setTabText(index, text)
+            self.tabs.setTabText(index, title)
+            self.tabs.setTabToolTip(index, f"{title}: {status}")
 
     def _update_navigation(self) -> None:
         if not hasattr(self, "next_button"):
@@ -1588,6 +2319,16 @@ class SewerPumpingStationDialog(QDialog):
             if self._meaningful_combo_value(self.control_combo)
             else "Juhtimise liik valimata"
         )
+        pump_labels = tuple(
+            " ".join(
+                value for value in (pump.manufacturer, pump.mark) if value
+            )
+            or f"Pump {index + 1}"
+            for index, pump in enumerate(self._pump_configs)
+        )
+        pump_ready = tuple(
+            self._pump_type_is_valid(pump) for pump in self._pump_configs
+        )
         self.preview.set_configuration(
             facility_name=name,
             type_label=type_label,
@@ -1599,6 +2340,9 @@ class SewerPumpingStationDialog(QDialog):
             pressure=pressure,
             power=power,
             pump_count=len(self._pump_configs),
+            pump_labels=pump_labels,
+            pump_ready=pump_ready,
+            selected_pump=self.pump_list.currentRow(),
         )
         parcel = self.parcel_edit.text().strip()
         self.parcel_warning.setVisible(
@@ -2310,6 +3054,7 @@ class SewerPumpingStationDialog(QDialog):
             if has_selection
             else "Pumpasid ei ole lisatud"
         )
+        self.preview.set_selected_pump(row)
         if not has_selection or self._loading_pump:
             return
         pump = self._pump_configs[row]

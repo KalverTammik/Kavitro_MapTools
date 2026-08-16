@@ -60,7 +60,7 @@ from .guided_feature_editor import (
     GuidedFieldBinding,
 )
 from .date_editor import EvelDateEditor, evel_date_editor_for_binding
-from .light_style import apply_evel_light_style
+from .light_style import apply_evel_light_style, configure_evel_tabs
 from .icon_catalog import (
     ICON_BACK,
     ICON_CANCEL,
@@ -1813,8 +1813,7 @@ class DuctEditorDialog(QDialog):
         editor_layout.addWidget(self.error_label)
 
         self.tabs = QTabWidget(editor_frame)
-        self.tabs.tabBar().setExpanding(True)
-        self.tabs.tabBar().setElideMode(Qt.ElideNone)
+        configure_evel_tabs(self.tabs)
         pipe_fields = list(PIPE_FIELDS)
         if self.profile is DuctEditorProfile.GRAVITY:
             pipe_fields.append("FORM_CODE_ID")

@@ -43,8 +43,14 @@ from ..topology import (
     select_sewer_reference_outlet,
     sewer_clock_angle,
 )
-from .light_style import apply_evel_light_style
-from .icon_catalog import apply_standard_button_icons
+from .light_style import apply_evel_light_style, configure_evel_tabs
+from .icon_catalog import (
+    ICON_CONFIGURE_NODE,
+    ICON_FIELD_MATERIAL,
+    ICON_SEWER_MANHOLE,
+    apply_standard_button_icons,
+    catalog_icon,
+)
 
 
 class SewerManholeClockWidget(QWidget):
@@ -473,6 +479,7 @@ class SewerManholeClockDialog(QDialog):
     def _detail_tabs(self) -> QTabWidget:
         config = self.state.configuration
         tabs = QTabWidget(self)
+        configure_evel_tabs(tabs)
 
         manhole_tab = QWidget(tabs)
         manhole_form = QFormLayout(manhole_tab)
@@ -513,7 +520,11 @@ class SewerManholeClockDialog(QDialog):
         self.access_duct_spin.setSuffix(" mm")
         self.access_duct_spin.setValue(config.access_duct_diam or 0)
         manhole_form.addRow("Tõusutoru läbimõõt", self.access_duct_spin)
-        tabs.addTab(manhole_tab, "Kaev")
+        tabs.addTab(
+            manhole_tab,
+            catalog_icon(ICON_SEWER_MANHOLE),
+            "01  Kaev",
+        )
 
         lid_tab = QWidget(tabs)
         lid_form = QFormLayout(lid_tab)
@@ -547,7 +558,11 @@ class SewerManholeClockDialog(QDialog):
             parent=lid_tab,
         )
         lid_form.addRow("Kaane kandevõime", self.lid_capacity_combo)
-        tabs.addTab(lid_tab, "Kaas")
+        tabs.addTab(
+            lid_tab,
+            catalog_icon(ICON_FIELD_MATERIAL),
+            "02  Kaas",
+        )
 
         connection_tab = QWidget(tabs)
         connection_form = QFormLayout(connection_tab)
@@ -587,7 +602,8 @@ class SewerManholeClockDialog(QDialog):
         connection_form.addRow("", note)
         self.connection_tab_index = tabs.addTab(
             connection_tab,
-            "Põlv / ühenduskoht",
+            catalog_icon(ICON_CONFIGURE_NODE),
+            "03  Põlv / ühenduskoht",
         )
         return tabs
 

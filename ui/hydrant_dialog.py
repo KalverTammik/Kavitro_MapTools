@@ -23,8 +23,14 @@ from ..layers import HydrantContext
 from ..topology import HydrantPlan, HydrantState
 from .guided_feature_editor import GuidedFeatureEditor
 from .date_editor import EvelDateEditor, evel_date_editor_for_binding
-from .light_style import apply_evel_light_style
-from .icon_catalog import apply_standard_button_icons
+from .light_style import apply_evel_light_style, configure_evel_tabs
+from .icon_catalog import (
+    ICON_FIELD_PRESSURE,
+    ICON_HYDRANT,
+    ICON_MANAGEMENT_TAB,
+    apply_standard_button_icons,
+    catalog_icon,
+)
 
 
 TEXT_SETUP = QgsEditorWidgetSetup(
@@ -342,7 +348,7 @@ class HydrantDialog(QDialog):
 
     def _editor_tabs(self) -> QTabWidget:
         tabs = QTabWidget(self)
-        tabs.setDocumentMode(True)
+        configure_evel_tabs(tabs)
 
         basic = QWidget(tabs)
         basic.setObjectName("tabContent")
@@ -383,7 +389,11 @@ class HydrantDialog(QDialog):
             "CONNECTION_STANDARD",
             "Voolikuühenduse standard",
         )
-        tabs.addTab(basic, "01 Hüdrant")
+        tabs.addTab(
+            basic,
+            catalog_icon(ICON_HYDRANT),
+            "01  Hüdrant",
+        )
 
         capacity = QWidget(tabs)
         capacity.setObjectName("tabContent")
@@ -412,7 +422,11 @@ class HydrantDialog(QDialog):
             "MEASURE_NR",
             "Mõõtmise akti number",
         )
-        tabs.addTab(capacity, "02 Tootlikkus")
+        tabs.addTab(
+            capacity,
+            catalog_icon(ICON_FIELD_PRESSURE),
+            "02  Tootlikkus",
+        )
 
         management = QWidget(tabs)
         management.setObjectName("tabContent")
@@ -432,7 +446,11 @@ class HydrantDialog(QDialog):
                 field_name,
                 labels[field_name],
             )
-        tabs.addTab(management, "03 Haldus")
+        tabs.addTab(
+            management,
+            catalog_icon(ICON_MANAGEMENT_TAB),
+            "03  Haldus",
+        )
         return tabs
 
     @staticmethod

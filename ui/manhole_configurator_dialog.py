@@ -23,10 +23,13 @@ from qgis.PyQt.QtWidgets import (
 
 from ..layers import LookupOption, ManholeConfigurationOptions
 from ..topology import ManholeConfiguration
-from .light_style import apply_evel_light_style
+from .light_style import apply_evel_light_style, configure_evel_tabs
 from .icon_catalog import (
     ICON_CONFIGURE,
+    ICON_FIELD_MATERIAL,
+    ICON_SEWER_MANHOLE,
     apply_standard_button_icons,
+    catalog_icon,
     set_catalog_icon,
 )
 
@@ -58,6 +61,7 @@ class ManholeConfiguratorDialog(QDialog):
         root.addWidget(intro)
 
         self.tabs = QTabWidget(self)
+        configure_evel_tabs(self.tabs)
         manhole_tab = QWidget(self.tabs)
         manhole_form = QFormLayout(manhole_tab)
         manhole_form.setFieldGrowthPolicy(QFormLayout.AllNonFixedFieldsGrow)
@@ -119,7 +123,11 @@ class ManholeConfiguratorDialog(QDialog):
             configuration.load_leveling_plate
         )
         manhole_form.addRow("", self.load_leveling_plate_check)
-        self.tabs.addTab(manhole_tab, "Kaev")
+        self.tabs.addTab(
+            manhole_tab,
+            catalog_icon(ICON_SEWER_MANHOLE),
+            "01  Kaev",
+        )
 
         lid_tab = QWidget(self.tabs)
         lid_form = QFormLayout(lid_tab)
@@ -162,7 +170,11 @@ class ManholeConfiguratorDialog(QDialog):
             configuration.lid_insulation
         )
         lid_form.addRow("", self.lid_insulation_check)
-        self.tabs.addTab(lid_tab, "Kaas")
+        self.tabs.addTab(
+            lid_tab,
+            catalog_icon(ICON_FIELD_MATERIAL),
+            "02  Kaas",
+        )
         root.addWidget(self.tabs, 1)
 
         buttons = QDialogButtonBox(

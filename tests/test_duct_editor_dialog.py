@@ -212,6 +212,8 @@ class DuctEditorDialogTest(unittest.TestCase):
         self.assertEqual("01  Toru", dialog.tabs.tabText(0))
         self.assertEqual("02  Haldus ja kvaliteet", dialog.tabs.tabText(1))
         self.assertEqual("03  EPANET", dialog.tabs.tabText(2))
+        self.assertTrue(dialog.tabs.property("evelWorkflowTabs"))
+        self.assertFalse(dialog.tabs.tabIcon(0).isNull())
         material = dialog.editor.binding("MATERIAL_ID")
         self.assertIsNotNone(material)
         self.assertEqual("Torumaterjal", material.label)

@@ -31,11 +31,14 @@ from ..layers import (
     LookupOption,
 )
 from ..topology import FacilityConfiguration
-from .light_style import apply_evel_light_style
+from .light_style import apply_evel_light_style, configure_evel_tabs
 from .date_editor import EvelDateEditor
 from .icon_catalog import (
     ICON_CONFIGURE,
+    ICON_FIELD_SERVICE_LIFE,
+    ICON_FIELD_SOURCE,
     apply_standard_button_icons,
+    catalog_icon,
     set_catalog_icon,
 )
 
@@ -125,6 +128,7 @@ class FacilityConfiguratorDialog(QDialog):
         root.addWidget(classification)
 
         self.tabs = QTabWidget(self)
+        configure_evel_tabs(self.tabs)
         general_tab = QWidget(self.tabs)
         general_form = QFormLayout(general_tab)
         general_form.setFieldGrowthPolicy(QFormLayout.AllNonFixedFieldsGrow)
@@ -157,7 +161,11 @@ class FacilityConfiguratorDialog(QDialog):
             configuration.is_signalisation
         )
         general_form.addRow("", self.signalisation_check)
-        self.tabs.addTab(general_tab, "Üldandmed")
+        self.tabs.addTab(
+            general_tab,
+            catalog_icon(ICON_CONFIGURE),
+            "01  Üldandmed",
+        )
 
         source_tab = QWidget(self.tabs)
         source_form = QFormLayout(source_tab)
@@ -202,7 +210,11 @@ class FacilityConfiguratorDialog(QDialog):
             "Mantli läbimõõt",
             self.mantle_diam_spin,
         )
-        self.tabs.addTab(source_tab, "Allikas ja register")
+        self.tabs.addTab(
+            source_tab,
+            catalog_icon(ICON_FIELD_SOURCE),
+            "02  Allikas ja register",
+        )
 
         lifecycle_tab = QWidget(self.tabs)
         lifecycle_form = QFormLayout(lifecycle_tab)
@@ -219,7 +231,11 @@ class FacilityConfiguratorDialog(QDialog):
             lifecycle_tab,
         )
         lifecycle_form.addRow("Likvideerimise kuupäev", self.wipeout_date)
-        self.tabs.addTab(lifecycle_tab, "Elukaar")
+        self.tabs.addTab(
+            lifecycle_tab,
+            catalog_icon(ICON_FIELD_SERVICE_LIFE),
+            "03  Elukaar",
+        )
         root.addWidget(self.tabs, 1)
 
         buttons = QDialogButtonBox(

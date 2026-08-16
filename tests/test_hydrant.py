@@ -11,6 +11,7 @@ from qgis.PyQt.QtWidgets import (
     QDialog,
     QDialogButtonBox,
     QFrame,
+    QTabWidget,
 )
 from qgis.core import (
     QgsDefaultValue,
@@ -316,6 +317,12 @@ class HydrantTest(unittest.TestCase):
             combo.palette().color(QPalette.Base).name(),
         )
         self.assertTrue(dialog.property("evelLightTheme"))
+        tabs = dialog.findChild(QTabWidget)
+        self.assertIsNotNone(tabs)
+        self.assertTrue(tabs.property("evelWorkflowTabs"))
+        self.assertEqual("01  Hüdrant", tabs.tabText(0))
+        self.assertEqual("03  Haldus", tabs.tabText(2))
+        self.assertFalse(tabs.tabIcon(0).isNull())
         self.assertIsNotNone(
             dialog.findChild(QFrame, "hydrantPreviewFrame")
         )

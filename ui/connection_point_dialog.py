@@ -30,8 +30,15 @@ from ..topology.connection_point import (
     NETWORK_LABELS,
 )
 from .guided_feature_editor import GuidedFeatureEditor
-from .light_style import apply_evel_light_style
-from .icon_catalog import apply_standard_button_icons
+from .light_style import apply_evel_light_style, configure_evel_tabs
+from .icon_catalog import (
+    ICON_CONFIGURE_NODE,
+    ICON_CONNECTION_POINT,
+    ICON_FIELD_NOTE,
+    ICON_FIELD_OWNER,
+    apply_standard_button_icons,
+    catalog_icon,
+)
 
 
 class ConnectionPointDialog(QDialog):
@@ -147,7 +154,7 @@ class ConnectionPointDialog(QDialog):
 
     def _tabs(self) -> QTabWidget:
         tabs = QTabWidget(self)
-        tabs.setDocumentMode(True)
+        configure_evel_tabs(tabs)
 
         basic = QWidget(tabs)
         basic_form = self._form(basic)
@@ -159,7 +166,11 @@ class ConnectionPointDialog(QDialog):
             ("REAL_ESTATE_NR", "Katastritunnus"),
         ):
             self._add_binding(basic_form, field_name, label)
-        tabs.addTab(basic, "01 Põhiandmed")
+        tabs.addTab(
+            basic,
+            catalog_icon(ICON_CONNECTION_POINT),
+            "01  Põhiandmed",
+        )
 
         network = QWidget(tabs)
         network_form = self._form(network)
@@ -200,7 +211,11 @@ class ConnectionPointDialog(QDialog):
         )
         hint.setWordWrap(True)
         network_form.addRow("", hint)
-        tabs.addTab(network, "02 Võrguseosed")
+        tabs.addTab(
+            network,
+            catalog_icon(ICON_CONFIGURE_NODE),
+            "02  Võrguseosed",
+        )
 
         customer = QWidget(tabs)
         customer_form = self._form(customer)
@@ -237,12 +252,20 @@ class ConnectionPointDialog(QDialog):
             "INDUSTRIALWWCONT_IS",
             "Tööstusliku reovee klient",
         )
-        tabs.addTab(customer, "03 Klient")
+        tabs.addTab(
+            customer,
+            catalog_icon(ICON_FIELD_OWNER),
+            "03  Klient",
+        )
 
         notes = QWidget(tabs)
         notes_form = self._form(notes)
         self._add_binding(notes_form, "COMMENTS", "Märkused")
-        tabs.addTab(notes, "04 Märkused")
+        tabs.addTab(
+            notes,
+            catalog_icon(ICON_FIELD_NOTE),
+            "04  Märkused",
+        )
         return tabs
 
     @staticmethod

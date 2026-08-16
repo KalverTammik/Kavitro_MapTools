@@ -5,7 +5,7 @@ from __future__ import annotations
 import unittest
 
 from qgis.PyQt.QtGui import QPalette
-from qgis.PyQt.QtWidgets import QDialogButtonBox
+from qgis.PyQt.QtWidgets import QDialogButtonBox, QTabWidget
 from qgis.core import (
     QgsDefaultValue,
     QgsFeature,
@@ -168,6 +168,12 @@ class ConnectionPointTest(unittest.TestCase):
         start_qgis().processEvents()
 
         self.assertTrue(dialog.property("evelLightTheme"))
+        tabs = dialog.findChild(QTabWidget)
+        self.assertIsNotNone(tabs)
+        self.assertTrue(tabs.property("evelWorkflowTabs"))
+        self.assertEqual("01  Põhiandmed", tabs.tabText(0))
+        self.assertEqual("04  Märkused", tabs.tabText(3))
+        self.assertFalse(tabs.tabIcon(0).isNull())
         self.assertEqual(
             "#ffffff",
             dialog.palette().color(QPalette.Base).name(),

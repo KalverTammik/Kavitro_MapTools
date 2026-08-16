@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from qgis.PyQt.QtCore import QSize, QTimer
+from qgis.PyQt.QtCore import QSize, Qt, QTimer
 from qgis.PyQt.QtGui import QColor, QPalette
-from qgis.PyQt.QtWidgets import QComboBox, QWidget
+from qgis.PyQt.QtWidgets import QComboBox, QTabWidget, QWidget
 
 from .icon_catalog import (
     ICON_CONTROL_CHECK,
@@ -102,7 +102,7 @@ QDialog QSpinBox,
 QDialog QDoubleSpinBox,
 QDialog QDateEdit,
 QDialog QDateTimeEdit {
-    padding-right: 28px;
+    padding-right: 0;
 }
 QDialog QSpinBox::up-button,
 QDialog QDoubleSpinBox::up-button,
@@ -220,6 +220,21 @@ QDialog QToolButton:checked {
     color: #ffffff;
     border: 1px solid #005a9e;
 }
+QDialog QLineEdit QToolButton {
+    background: transparent;
+    border: none;
+    border-radius: 4px;
+    padding: 0;
+    margin: 0;
+    min-width: 18px;
+    max-width: 18px;
+    min-height: 18px;
+    max-height: 18px;
+}
+QDialog QLineEdit QToolButton:hover {
+    background: #edf6ff;
+    border: none;
+}
 QDialog QCheckBox {
     color: #24292e;
     spacing: 6px;
@@ -280,8 +295,9 @@ QDialog QTabBar::tab {
     color: #4a5568;
     border: 1px solid #d0d7de;
     border-bottom: none;
-    padding: 7px 12px;
+    padding: 7px 14px;
     min-width: 90px;
+    min-height: 24px;
 }
 QDialog QTabBar::tab:hover {
     background: #edf4fb;
@@ -961,6 +977,20 @@ def _finish_light_style(widget) -> None:
         except RuntimeError:
             continue
     _style_combo_popups(widget)
+
+
+def configure_evel_tabs(tabs: QTabWidget) -> QTabWidget:
+    """Apply the compact, icon-ready workflow tabs used by duct editors."""
+
+    tabs.setProperty("evelWorkflowTabs", True)
+    tabs.setDocumentMode(False)
+    tabs.setIconSize(QSize(17, 17))
+    bar = tabs.tabBar()
+    bar.setDrawBase(False)
+    bar.setExpanding(True)
+    bar.setUsesScrollButtons(False)
+    bar.setElideMode(Qt.ElideNone)
+    return tabs
 
 
 def apply_evel_light_style(

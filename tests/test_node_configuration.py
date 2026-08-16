@@ -484,6 +484,10 @@ class NodeConfigurationTest(unittest.TestCase):
         self.assertTrue(editor.property("evelLightTheme"))
         self.assertIn("#f6f7f8", editor.styleSheet())
         self.assertEqual(2, editor.tabs.count())
+        self.assertTrue(editor.tabs.property("evelWorkflowTabs"))
+        self.assertEqual("01  Kaev", editor.tabs.tabText(0))
+        self.assertEqual("02  Kaas", editor.tabs.tabText(1))
+        self.assertFalse(editor.tabs.tabIcon(0).isNull())
         editor.type_combo.setCurrentIndex(
             editor.type_combo.findData(572)
         )
@@ -603,6 +607,10 @@ class NodeConfigurationTest(unittest.TestCase):
         )
         self.assertTrue(editor.property("evelLightTheme"))
         self.assertIn("#f6f7f8", editor.styleSheet())
+        self.assertTrue(editor.tabs.property("evelWorkflowTabs"))
+        self.assertEqual("01  Üldandmed", editor.tabs.tabText(0))
+        self.assertEqual("03  Elukaar", editor.tabs.tabText(2))
+        self.assertFalse(editor.tabs.tabIcon(0).isNull())
         self.assertIsInstance(
             editor.renewal_date.date_control,
             EvelDateEditor,
